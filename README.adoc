@@ -1,0 +1,87 @@
+= gomasaba
+
+gomasaba は、実験と Zig 学習のために実装している、WebAssembly ランタイムです。
+
+== ビルド
+
+zig 0.10.1 をインストールし、以下を実行します。
+
+[source, console]
+----
+zig build -Drelease-safe
+----
+
+`./zig-out/bin/gomasaba` が出力されます。
+
+== WebAssembly のデコード
+
+WebAssembly のデコードのサポート状況は、以下の通りです。
+
+|===
+| ID | Name | Status
+
+| 0
+| Custom Section
+| ✅
+
+| 1
+| Type Section
+| ✅
+
+| 2
+| Import Section
+| ✅
+
+| 3
+| Function Section
+| ✅
+
+| 4
+| Table Section
+| ✅
+
+| 5
+| Memory Section
+| ✅
+
+| 6
+| Global Section
+| ✅
+
+| 7
+| Export Section
+| ✅
+
+| 8
+| Start Section
+| ✅
+
+| 9
+| Element Section
+|
+
+| 10
+| Code Section
+| ✅
+
+| 11
+| Data Section
+|
+
+| 12
+| Data Count Section
+|
+
+|===
+
+== WebAssembly の実行（未実装）
+
+== WebAssembly の出力
+
+WebAssembly をテキストフォーマットで出力します。
+現在は、一部の命令のみ出力可能です。
+
+[source, console]
+----
+gomasaba dump path/to/wasm.wasm
+----
