@@ -1,43 +1,77 @@
 const std = @import("std");
+const io = std.io;
+const mem = std.mem;
 const process = std.process;
-const Allocator = std.mem.Allocator;
+const Allocator = mem.Allocator;
+const build_options = @import("build_options");
 const mod = @import("./mod.zig");
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+const usage =
+    \\Usage: gomasaba [command] [options]
+    \\
+    \\Commands:
+    \\
+    \\  run              Run WebAssembly
+    \\  dump             Dump WebAssembly in text format
+    \\
+    \\  help             Print this help and exit
+    \\  version          Print version number and exit
+;
 
-    var iter = try process.ArgIterator.initWithAllocator(arena.allocator());
-    _ = iter.next(); // exec args
+const version = "0.1.0-dev";
 
-    const sub_cmd = iter.next();
-    if (sub_cmd) |cmd| {
-        if (std.mem.eql(u8, cmd, "run"))
-            try run(&iter, arena.allocator())
-        else if (std.mem.eql(u8, cmd, "dump"))
-            try dump(&iter, arena.allocator())
-        else
-            return error.InvalidSubCommand;
-    } else return error.SubCommandNotSpecified;
+pub fn fatal(comptime format: []const u8, args: anytype) noreturn {
+    std.log.err(format, args);
+    process.exit(1);
 }
 
-fn run(iter: *process.ArgIterator, allocator: Allocator) !void {
-    const name = iter.next() orelse null;
-    if (name == null) {
-        return error.FileNameNotSpecified;
+pub fn main() !void {
+    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_instance.deinit();
+
+    const arena = arena_instance.allocator();
+
+    const args = try process.argsAlloc(arena);
+    if (args.len < 2) {
+        std.log.info("{s}", .{usage});
+        fatal("expected command argument", .{});
     }
 
-    const m = try loadWasm(name.?, allocator);
+    const cmd = args[1];
+    const cmd_args = args[2..];
+    if (mem.eql(u8, cmd, "run")) {
+        return runCommand(arena, cmd_args);
+    } else if (mem.eql(u8, cmd, "dump")) {
+        return dumpCommand(arena, cmd_args);
+    } else if (mem.eql(u8, cmd, "help")) {
+        return io.getStdOut().writeAll(usage);
+    } else if (mem.eql(u8, cmd, "version")) {
+        try std.io.getStdOut().writeAll(build_options.version ++ "\n");
+    } else {
+        std.log.info("{s}", .{usage});
+        fatal("unknown command: {s}", .{cmd});
+    }
+}
+
+fn runCommand(arena: Allocator, args: []const []const u8) !void {
+    if (args.len == 0) {
+        fatal("wasm file is not specified", .{});
+    }
+
+    const name = args[0];
+
+    const m = try loadWasm(name, arena);
     _ = m;
 }
 
-fn dump(iter: *process.ArgIterator, allocator: Allocator) !void {
-    const name = iter.next() orelse null;
-    if (name == null) {
-        return error.FileNameNotSpecified;
+fn dumpCommand(arena: Allocator, args: []const []const u8) !void {
+    if (args.len == 0) {
+        fatal("wasm file is not specified", .{});
     }
 
-    const m = try loadWasm(name.?, allocator);
+    const name = args[0];
+
+    const m = try loadWasm(name, arena);
 
     const stdout = std.io.getStdOut();
 

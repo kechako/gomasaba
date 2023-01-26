@@ -1,20 +1,23 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
+const gomasaba_version = std.SemanticVersion{ .major = 0, .minor = 1, .patch = 0 };
+
+pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
 
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("gomasaba", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
+
+    const version_string = b.fmt("{d}.{d}.{d}", .{ gomasaba_version.major, gomasaba_version.minor, gomasaba_version.patch });
+    const version = try b.allocator.dupeZ(u8, version_string);
+
+    const exe_options = b.addOptions();
+    exe.addOptions("build_options", exe_options);
+    exe_options.addOption([:0]const u8, "version", version);
 
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());
