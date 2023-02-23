@@ -57,6 +57,10 @@ pub const WatEncoder = struct {
             try self.writeStartSection(writer, sec);
         }
 
+        if (m.data_section) |sec| {
+            try self.writeDataSection(writer, sec);
+        }
+
         self.decreaseIndent();
 
         try writer.writeByte(')');
@@ -113,11 +117,11 @@ pub const WatEncoder = struct {
 
             try writer.writeAll("(import ");
 
-            try self.writeName(writer, imp.module);
+            try self.writeString(writer, imp.module);
 
             try writer.writeByte(' ');
 
-            try self.writeName(writer, imp.name);
+            try self.writeString(writer, imp.name);
 
             try writer.writeByte(' ');
 
@@ -141,12 +145,12 @@ pub const WatEncoder = struct {
         }
     }
 
-    fn writeName(_: *WatEncoder, writer: anytype, name: []const u8) !void {
+    fn writeString(_: *WatEncoder, writer: anytype, s: []const u8) !void {
         try writer.writeByte('"');
 
         const unicode = std.unicode;
 
-        var iter = (try unicode.Utf8View.init(name)).iterator();
+        var iter = (try unicode.Utf8View.init(s)).iterator();
         while (iter.nextCodepoint()) |codepoint| {
             if (codepoint >= 0x20 and codepoint != 0x7f and codepoint != '"' and codepoint != '\\') {
                 var buf: [8]u8 = undefined;
@@ -271,7 +275,27 @@ pub const WatEncoder = struct {
                 .I32Sub => {
                     try writer.writeAll("i32.sub");
                 },
-                else => return error.UnsupportedInstruction,
+                .I32Store => {
+                    const a = blk: {
+                        const n = try r.readUnsigned(u32);
+                        break :blk std.math.pow(u32, 2, n);
+                    };
+                    const o = try r.readUnsigned(u32);
+                    try writer.writeAll("i32.store");
+                    if (o > 0) {
+                        try writer.print(" offset={d}", .{o});
+                    }
+                    if (a > 0 and a != 4) {
+                        try writer.print(" align={d}", .{a});
+                    }
+                },
+                .Drop => {
+                    try writer.writeAll("drop");
+                },
+                else => {
+                    std.debug.print("op: {any}\n", .{op});
+                    return error.UnsupportedInstruction;
+                },
             }
         }
     }
@@ -405,7 +429,7 @@ pub const WatEncoder = struct {
 
             try writer.writeAll("(export ");
 
-            try self.writeName(writer, exp.name);
+            try self.writeString(writer, exp.name);
 
             try writer.writeByte(' ');
 
@@ -446,6 +470,32 @@ pub const WatEncoder = struct {
         try writer.print("(start {d})", .{start.function_index});
     }
 
+    fn writeDataSection(self: *WatEncoder, writer: anytype, sec: mod.DataSection) !void {
+        for (sec.datas) |data| {
+            try self.writeIndent(writer);
+
+            try writer.writeAll("(data ");
+
+            if (data.mode.memory) {
+                try writer.print("(memory {d}) ", .{data.memory_index});
+            }
+
+            if (!data.mode.passive) {
+                try self.writeConstantExpressions(writer, data.offset);
+            }
+
+            try writer.writeByte(' ');
+
+            try self.writeString(writer, data.data);
+
+            try writer.writeByte(')');
+        }
+    }
+
+    fn writeData(_: *WatEncoder, writer: anytype, start: mod.Data) !void {
+        try writer.print("(start {d})", .{start.function_index});
+    }
+
     fn getTypeIndex(self: *WatEncoder) usize {
         const idx = self.type_index;
         self.type_index += 1;
@@ -466,6 +516,7 @@ pub const WatEncoder = struct {
             try writer.writeByte(' ');
         }
     }
+
     fn increaseIndent(self: *WatEncoder) void {
         self.indent += 2;
     }

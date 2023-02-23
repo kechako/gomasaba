@@ -5,6 +5,7 @@ const process = std.process;
 const Allocator = mem.Allocator;
 const build_options = @import("build_options");
 const mod = @import("./mod.zig");
+const runtime = @import("./runtime.zig");
 
 const usage =
     \\Usage: gomasaba [command] [options]
@@ -58,10 +59,46 @@ fn runCommand(arena: Allocator, args: []const []const u8) !void {
         fatal("wasm file is not specified", .{});
     }
 
-    const name = args[0];
+    const name = args[args.len - 1];
+
+    const options = parseRunOptions(arena, args[0 .. args.len - 1]) catch {
+        std.log.info("{s}", .{usage});
+        fatal("invalid options", .{});
+    };
 
     const m = try loadWasm(name, arena);
-    _ = m;
+
+    var vm = runtime.VM.init(arena, m);
+
+    const ret = try vm.callFunction(options.invoke);
+    try std.io.getStdOut().writer().print("{}\n", .{ret});
+}
+
+const RunOptions = struct {
+    invoke: []const u8,
+};
+
+fn parseRunOptions(arena: Allocator, args: []const []const u8) !RunOptions {
+    var invoke: []const u8 = "main";
+
+    var i: usize = 0;
+    while (i < args.len) {
+        var arg = args[i];
+        if (mem.eql(u8, arg, "--invoke")) {
+            i += 1;
+            if (i >= args.len) {
+                return error.InvalidOptions;
+            }
+            invoke = try arena.dupe(u8, args[i]);
+            continue;
+        }
+
+        return error.InvalidOptions;
+    }
+
+    return .{
+        .invoke = invoke,
+    };
 }
 
 fn dumpCommand(arena: Allocator, args: []const []const u8) !void {
@@ -85,4 +122,8 @@ fn loadWasm(name: []const u8, allocator: Allocator) !mod.Module {
     defer file.close();
 
     return try mod.Decoder.init(allocator).decode(file.reader());
+}
+
+test {
+    std.testing.refAllDeclsRecursive(@This());
 }

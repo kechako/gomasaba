@@ -57,6 +57,7 @@ pub const Decoder = struct {
         var export_section: ?mod.ExportSection = null;
         var start_section: ?mod.StartSection = null;
         var code_section: ?mod.CodeSection = null;
+        var data_section: ?mod.DataSection = null;
 
         while (true) {
             var id: mod.SectionCode = undefined;
@@ -105,6 +106,9 @@ pub const Decoder = struct {
                 .Code => {
                     code_section = try self.readCodeSection(limited);
                 },
+                .Data => {
+                    data_section = try self.readDataSection(limited);
+                },
                 else => {
                     // unsupported sections
                     const buf = try self.allocator.alloc(u8, size);
@@ -127,6 +131,7 @@ pub const Decoder = struct {
             .export_section = export_section,
             .start_section = start_section,
             .code_section = code_section,
+            .data_section = data_section,
         };
     }
 
@@ -520,6 +525,53 @@ pub const Decoder = struct {
 
     fn readLocals(self: Decoder, reader: anytype) !mod.Locals {
         return try self.readValueTypes(reader);
+    }
+
+    fn readDataSection(self: Decoder, reader: anytype) !mod.DataSection {
+        const size = try self.readUnsigned(u32, reader);
+
+        const datas = try self.allocator.alloc(mod.Data, size);
+        var i: usize = 0;
+        while (i < datas.len) : (i += 1) {
+            datas[i] = try self.readData(reader);
+        }
+
+        return .{
+            .datas = datas,
+        };
+    }
+
+    fn readData(self: Decoder, reader: anytype) !mod.Data {
+        const n = try self.readUnsigned(u32, reader);
+        const mode = mod.DataMode.fromInt(n);
+
+        var memory_index: u32 = 0;
+        if (mode.memory) {
+            memory_index = try self.readUnsigned(u32, reader);
+        }
+
+        var offset: []const u8 = &[_]u8{};
+        if (!mode.passive) {
+            offset = try self.readConstantExpressions(reader, mod.ValueType.i32);
+        }
+
+        const data = try self.readBytes(reader);
+
+        return .{
+            .mode = mode,
+            .memory_index = memory_index,
+            .offset = offset,
+            .data = data,
+        };
+    }
+
+    fn readBytes(self: Decoder, reader: anytype) ![]const u8 {
+        const size = try self.readUnsigned(u32, reader);
+
+        const bytes = try self.allocator.alloc(u8, size);
+        _ = try reader.readAll(bytes);
+
+        return bytes;
     }
 
     fn readUnsigned(_: Decoder, comptime T: type, reader: anytype) !T {

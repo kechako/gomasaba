@@ -152,20 +152,20 @@ pub const ValueType = enum(i8) {
 
 test "mod.mod.ValueType.fromInt()" {
     // number types
-    try expectEqual(ValueType.i32, ValueType.fromInt(@as(i8, -0x01)));
-    try expectEqual(ValueType.i64, ValueType.fromInt(@as(i8, -0x02)));
-    try expectEqual(ValueType.f32, ValueType.fromInt(@as(i8, -0x03)));
-    try expectEqual(ValueType.f64, ValueType.fromInt(@as(i8, -0x04)));
+    try expectEqual(ValueType.i32, try ValueType.fromInt(@as(i8, -0x01)));
+    try expectEqual(ValueType.i64, try ValueType.fromInt(@as(i8, -0x02)));
+    try expectEqual(ValueType.f32, try ValueType.fromInt(@as(i8, -0x03)));
+    try expectEqual(ValueType.f64, try ValueType.fromInt(@as(i8, -0x04)));
 
     // vector types
-    try expectEqual(ValueType.v128, ValueType.fromInt(@as(i8, -0x05)));
+    try expectEqual(ValueType.v128, try ValueType.fromInt(@as(i8, -0x05)));
 
     // reference types
-    try expectEqual(ValueType.funcref, ValueType.fromInt(@as(i8, -0x10)));
-    try expectEqual(ValueType.externref, ValueType.fromInt(@as(i8, -0x11)));
+    try expectEqual(ValueType.funcref, try ValueType.fromInt(@as(i8, -0x10)));
+    try expectEqual(ValueType.externref, try ValueType.fromInt(@as(i8, -0x11)));
 
     // block type
-    try expectEqual(ValueType.block, ValueType.fromInt(@as(i8, 0x40)));
+    try expectEqual(ValueType.block, try ValueType.fromInt(@as(i8, 0x40)));
 
     // invalid value
     try expectError(error.InvalidValueType, ValueType.fromInt(@as(i8, 0x00)));
@@ -176,7 +176,7 @@ test "mod.mod.ValueType.format()" {
     defer test_allocator.free(i32_string);
     try expectEqualStrings("i32", i32_string);
 
-    const i64_string = try std.fmt.allocPrint(test_allocator, "{s}", .{ValueType.i32});
+    const i64_string = try std.fmt.allocPrint(test_allocator, "{s}", .{ValueType.i64});
     defer test_allocator.free(i64_string);
     try expectEqualStrings("i64", i64_string);
 
@@ -400,7 +400,31 @@ pub const Code = struct {
 
 pub const Locals = []ValueType;
 
-pub const DataSection = struct {};
+pub const DataSection = struct {
+    datas: []Data,
+};
+
+pub const DataMode = packed struct {
+    passive: bool,
+    memory: bool,
+
+    reserved: u30,
+
+    pub fn fromInt(n: u32) DataMode {
+        return @bitCast(DataMode, n);
+    }
+
+    pub fn toInt(self: DataMode) u32 {
+        return @bitCast(u32, self);
+    }
+};
+
+pub const Data = struct {
+    mode: DataMode,
+    memory_index: u32,
+    offset: []const u8,
+    data: []const u8,
+};
 
 pub const DataCountSection = struct {};
 
