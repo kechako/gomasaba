@@ -261,9 +261,20 @@ pub const WatEncoder = struct {
                     const v = try r.readUnsigned(u32);
                     try writer.print("call {d}", .{v});
                 },
+                .Return => {
+                    try writer.writeAll("return");
+                },
                 .LocalGet => {
                     const v = try r.readUnsigned(u32);
                     try writer.print("local.get {d}", .{v});
+                },
+                .LocalSet => {
+                    const v = try r.readUnsigned(u32);
+                    try writer.print("local.set {d}", .{v});
+                },
+                .LocalTee => {
+                    const v = try r.readUnsigned(u32);
+                    try writer.print("local.tee {d}", .{v});
                 },
                 .I32Const => {
                     const v = try r.readUnsigned(u32);
@@ -274,6 +285,12 @@ pub const WatEncoder = struct {
                 },
                 .I32Sub => {
                     try writer.writeAll("i32.sub");
+                },
+                .I32Mul => {
+                    try writer.writeAll("i32.mul");
+                },
+                .I32DivS => {
+                    try writer.writeAll("i32.div_s");
                 },
                 .I32Store => {
                     const a = blk: {

@@ -74,7 +74,22 @@ WebAssembly のデコードのサポート状況は、以下の通りです。
 
 |===
 
-== WebAssembly の実行（未実装）
+== WebAssembly の実行
+
+Wasm ファイルのみ指定して実行すると、Start section が実行されます。
+
+[source, console]
+----
+gomasaba run path/to/wasm.wasm
+----
+
+`--invoke` オプションで、実行する関数を指定できます。
+`--invoke` オプションには、Export 名を指定します。
+
+[source, console]
+----
+gomasaba run --invoke main path/to/wasm.wasm
+----
 
 == WebAssembly の出力
 
@@ -85,3 +100,17 @@ WebAssembly をテキストフォーマットで出力します。
 ----
 gomasaba dump path/to/wasm.wasm
 ----
+
+== サポートする命令
+
+- i32.const
+- i32.add
+- i32.sub
+- i32.mul
+- i32.div_s
+- local.get
+- local.set
+- local.tee
+- drop
+- call
+- return

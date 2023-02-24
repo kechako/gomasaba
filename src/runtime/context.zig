@@ -4,33 +4,19 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const runtime = @import("../runtime.zig");
 const Value = runtime.Value;
+const Stack = runtime.Stack;
+const Label = runtime.Label;
 
 pub const Context = struct {
-    allocator: Allocator,
-    stack: ArrayList(StackItem),
+    stack: Stack,
 
     pub fn init(allocator: Allocator) Context {
-        const stack = ArrayList(StackItem).init(allocator);
-        return .{ .allocator = allocator, .stack = stack };
+        return .{
+            .stack = Stack.init(allocator),
+        };
     }
 
-    pub fn pushValue(self: *Context, value: Value) !void {
-        self.stack.append(.{
-            .value = value,
-        });
+    pub fn deinit(self: *Context) void {
+        self.stack.deinit();
     }
-
-    pub fn popValue(self: Context) !Value {
-        const item = self.stack.popOrNull();
-        if (item == null) return error.StackUnderflow;
-
-        switch (item.?) {
-            .value => |v| return v,
-            else => return error.InvalidStackItem,
-        }
-    }
-};
-
-const StackItem = union {
-    value: Value,
 };

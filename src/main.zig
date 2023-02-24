@@ -68,10 +68,19 @@ fn runCommand(arena: Allocator, args: []const []const u8) !void {
 
     const m = try loadWasm(name, arena);
 
-    var vm = runtime.VM.init(arena, m);
+    var vm = try runtime.VM.init(arena, m);
+    defer vm.deinit();
 
-    const ret = try vm.callFunction(options.invoke);
-    try std.io.getStdOut().writer().print("{}\n", .{ret});
+    var ret: runtime.VM.Result = undefined;
+    if (options.invoke.len == 0) {
+        ret = try vm.start();
+    } else {
+        ret = try vm.call(options.invoke);
+    }
+
+    for (ret.values) |value| {
+        try std.io.getStdOut().writer().print("{}\n", .{value});
+    }
 }
 
 const RunOptions = struct {
@@ -79,10 +88,10 @@ const RunOptions = struct {
 };
 
 fn parseRunOptions(arena: Allocator, args: []const []const u8) !RunOptions {
-    var invoke: []const u8 = "main";
+    var invoke: []const u8 = "";
 
     var i: usize = 0;
-    while (i < args.len) {
+    while (i < args.len) : (i += 1) {
         var arg = args[i];
         if (mem.eql(u8, arg, "--invoke")) {
             i += 1;

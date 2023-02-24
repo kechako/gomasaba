@@ -1,3 +1,4 @@
+const std = @import("std");
 const mod = @import("../mod.zig");
 const instr = mod.instr;
 const leb128 = mod.leb128;
