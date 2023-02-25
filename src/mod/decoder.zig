@@ -2,6 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const mod = @import("../mod.zig");
 const leb128 = mod.leb128;
+const Opecode = mod.instr.Opecode;
+const Instruction = mod.instr.Instruction;
+const Instructions = mod.instr.Instructions;
 const expr = mod.expr;
 
 pub const Decoder = struct {
@@ -395,11 +398,11 @@ pub const Decoder = struct {
     fn readGlobal(self: Decoder, reader: anytype) !mod.Global {
         const typ = try self.readGlobalType(reader);
 
-        const expressions = try self.readConstantExpressions(reader, typ.type);
+        const instructions = try self.readConstantInstructions(reader, typ.type);
 
         return .{
             .global_type = typ,
-            .expressions = expressions,
+            .instructions = instructions,
         };
     }
 
@@ -415,14 +418,101 @@ pub const Decoder = struct {
         };
     }
 
-    fn readConstantExpressions(self: Decoder, reader: anytype, typ: mod.ValueType) ![]u8 {
-        var list = std.ArrayList(u8).init(self.allocator);
-        var tr = mod.teeReader(reader, list.writer());
+    fn readConstantInstructions(self: Decoder, reader: anytype, typ: mod.ValueType) !Instructions {
+        var instructions = Instructions.init(self.allocator);
 
-        try expr.skipConstantExpression(tr.reader(), typ);
+        var r = expr.expressionReader(reader);
+        {
+            var instr: Instruction = undefined;
 
-        const expressions = list.toOwnedSlice();
-        return expressions;
+            const opcode = try r.next();
+            if (opcode) |op| {
+                switch (typ) {
+                    .i32 => {
+                        switch (op) {
+                            .@"i32.const" => {
+                                const v = try r.readSigned(i32);
+                                instr = .{ .@"i32.const" = v };
+                            },
+                            .@"global.get" => {
+                                const idx = try r.readUnsigned(u32);
+                                instr = .{ .@"global.get" = idx };
+                            },
+                            else => return error.InvalidConstantExpressions,
+                        }
+                    },
+                    .i64 => {
+                        switch (op) {
+                            .@"i64.const" => {
+                                const v = try r.readSigned(i64);
+                                instr = .{ .@"i64.const" = v };
+                            },
+                            .@"global.get" => {
+                                const idx = try r.readUnsigned(u32);
+                                instr = .{ .@"global.get" = idx };
+                            },
+                            else => return error.InvalidConstantExpressions,
+                        }
+                    },
+                    .f32 => {
+                        switch (op) {
+                            .@"f32.const" => {
+                                const v = try r.readFloat(f32);
+                                instr = .{ .@"f32.const" = v };
+                            },
+                            .@"global.get" => {
+                                const idx = try r.readUnsigned(u32);
+                                instr = .{ .@"global.get" = idx };
+                            },
+                            else => return error.InvalidConstantExpressions,
+                        }
+                    },
+                    .f64 => {
+                        switch (op) {
+                            .@"f64.const" => {
+                                const v = try r.readFloat(f64);
+                                instr = .{ .@"f64.const" = v };
+                            },
+                            .@"global.get" => {
+                                const idx = try r.readUnsigned(u32);
+                                instr = .{ .@"global.get" = idx };
+                            },
+                            else => return error.InvalidConstantExpressions,
+                        }
+                    },
+                    //.funcref, .externref => {
+                    //    switch (op) {
+                    //        .@"ref.null" => {
+                    //            const b = try r.readSigned(i8);
+                    //            const valType = try mod.ValueType.fromInt(b);
+                    //            if (valType != .funcref) return error.InvalidConstantExpressions;
+                    //        },
+                    //        .@"ref.func" => {
+                    //            _ = try r.readUnsigned(u32);
+                    //        },
+                    //        else => return error.InvalidConstantExpressions,
+                    //    }
+                    //},
+                    else => return error.UnsupportedInstruction,
+                }
+            } else return error.InvalidConstantExpressions;
+
+            try instructions.push(instr);
+        }
+
+        // End
+        {
+            const opcode = try r.next();
+            if (opcode) |op| {
+                if (op != .@"end") {
+                    return error.InvalidConstantExpressions;
+                }
+
+                try instructions.push(Instruction.@"end");
+            }
+        }
+
+        return instructions;
     }
 
     fn readExportSection(self: Decoder, reader: anytype) !mod.ExportSection {
@@ -511,15 +601,15 @@ pub const Decoder = struct {
         const size = try self.readUnsigned(u32, reader);
 
         var limited = std.io.limitedReader(reader, size);
+        var r = limited.reader();
 
-        const locals = try self.readLocals(limited.reader());
+        const locals = try self.readLocals(r);
 
-        const expression = try self.allocator.alloc(u8, limited.bytes_left);
-        _ = try limited.reader().readAll(expression);
+        const instructions = try self.readInstructions(r);
 
         return .{
             .locals = locals,
-            .expressions = expression,
+            .instructions = instructions,
         };
     }
 
@@ -532,6 +622,58 @@ pub const Decoder = struct {
         }
 
         return locals;
+    }
+
+    fn readInstructions(self: Decoder, reader: anytype) !Instructions {
+        var instructions = Instructions.init(self.allocator);
+
+        var r = expr.expressionReader(reader);
+        while (try r.next()) |op| {
+            //std.debug.print("OP: {s}\n", .{@tagName(op)});
+
+            var exit = false;
+            var instr: Instruction = undefined;
+            switch (op) {
+                .@"end" => {
+                    instr = Instruction.@"end";
+                    exit = true;
+                },
+                .@"return" => instr = Instruction.@"return",
+                .@"call" => {
+                    const idx = try r.readUnsigned(u32);
+                    instr = .{ .@"call" = idx };
+                },
+                .@"drop" => instr = Instruction.@"drop",
+                .@"local.get" => {
+                    const idx = try r.readUnsigned(u32);
+                    instr = .{ .@"local.get" = idx };
+                },
+                .@"local.set" => {
+                    const idx = try r.readUnsigned(u32);
+                    instr = .{ .@"local.set" = idx };
+                },
+                .@"local.tee" => {
+                    const idx = try r.readUnsigned(u32);
+                    instr = .{ .@"local.tee" = idx };
+                },
+                .@"i32.const" => {
+                    const v = try r.readSigned(i32);
+                    instr = .{ .@"i32.const" = v };
+                },
+                .@"i32.add" => instr = Instruction.@"i32.add",
+                .@"i32.sub" => instr = Instruction.@"i32.sub",
+                .@"i32.mul" => instr = Instruction.@"i32.mul",
+                .@"i32.div_s" => instr = Instruction.@"i32.div_s",
+                else => return error.UnsupportedInstruction,
+            }
+            try instructions.push(instr);
+
+            if (exit) {
+                break;
+            }
+        }
+
+        return instructions;
     }
 
     fn readLocal(self: Decoder, reader: anytype) !mod.Local {
@@ -566,9 +708,11 @@ pub const Decoder = struct {
             memory_index = try self.readUnsigned(u32, reader);
         }
 
-        var offset: []const u8 = &[_]u8{};
-        if (!mode.passive) {
-            offset = try self.readConstantExpressions(reader, mod.ValueType.i32);
+        var offset: Instructions = undefined;
+        if (mode.passive) {
+            offset = Instructions.init(self.allocator);
+        } else {
+            offset = try self.readConstantInstructions(reader, mod.ValueType.i32);
         }
 
         const data = try self.readBytes(reader);

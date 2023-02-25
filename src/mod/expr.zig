@@ -69,10 +69,10 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
             const opcode = try r.next();
             if (opcode) |op|
                 switch (op) {
-                    .I32Const => {
+                    .@"i32.const" => {
                         _ = try r.readSigned(i32);
                     },
-                    .GlobalGet => {
+                    .@"global.get" => {
                         _ = try r.readUnsigned(u32);
                     },
                     else => return error.InvalidConstantExpressions,
@@ -84,10 +84,10 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
             const opcode = try r.next();
             if (opcode) |op|
                 switch (op) {
-                    .I64Const => {
+                    .@"i64.const" => {
                         _ = try r.readSigned(i64);
                     },
-                    .GlobalGet => {
+                    .@"global.get" => {
                         _ = try r.readUnsigned(u64);
                     },
                     else => return error.InvalidConstantExpressions,
@@ -99,10 +99,10 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
             const opcode = try r.next();
             if (opcode) |op|
                 switch (op) {
-                    .F32Const => {
+                    .@"f32.const" => {
                         _ = try r.readFloat(f32);
                     },
-                    .GlobalGet => {
+                    .@"global.get" => {
                         _ = try r.readUnsigned(u32);
                     },
                     else => return error.InvalidConstantExpressions,
@@ -114,10 +114,10 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
             const opcode = try r.next();
             if (opcode) |op|
                 switch (op) {
-                    .F64Const => {
+                    .@"f64.const" => {
                         _ = try r.readFloat(f64);
                     },
-                    .GlobalGet => {
+                    .@"global.get" => {
                         _ = try r.readUnsigned(u32);
                     },
                     else => return error.InvalidConstantExpressions,
@@ -129,12 +129,12 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
             const opcode = try r.next();
             if (opcode) |op|
                 switch (op) {
-                    .RefNull => {
+                    .@"ref.null" => {
                         const b = try r.readSigned(i8);
                         const valType = try mod.ValueType.fromInt(b);
                         if (valType != .funcref) return error.InvalidConstantExpressions;
                     },
-                    .RefFunc => {
+                    .@"ref.func" => {
                         _ = try r.readUnsigned(u32);
                     },
                     else => return error.InvalidConstantExpressions,
@@ -149,7 +149,7 @@ pub fn skipConstantExpression(reader: anytype, typ: mod.ValueType) !void {
     {
         const opcode = try r.next();
         if (opcode) |op| {
-            if (op != .End) {
+            if (op != .@"end") {
                 return error.InvalidConstantExpressions;
             }
         }

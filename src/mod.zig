@@ -308,7 +308,7 @@ pub const GlobalSection = struct {
 
 pub const Global = struct {
     global_type: GlobalType,
-    expressions: []u8,
+    instructions: instr.Instructions,
 };
 
 pub const Mutability = enum(u8) {
@@ -395,7 +395,7 @@ pub const CodeSection = struct {
 
 pub const Code = struct {
     locals: Locals,
-    expressions: []u8,
+    instructions: instr.Instructions,
 };
 
 pub const Locals = []Local;
@@ -427,7 +427,7 @@ pub const DataMode = packed struct {
 pub const Data = struct {
     mode: DataMode,
     memory_index: u32,
-    offset: []const u8,
+    offset: instr.Instructions,
     data: []const u8,
 };
 

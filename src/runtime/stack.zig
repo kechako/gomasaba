@@ -6,6 +6,7 @@ const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 const expectFmt = std.testing.expectFmt;
 const mod = @import("../mod.zig");
+const instr = mod.instr;
 const expr = mod.expr;
 
 const ModuleInstance = @import("./instance.zig").ModuleInstance;
@@ -240,24 +241,12 @@ const StreamType = @TypeOf(std.io.fixedBufferStream(""));
 const ExpressionReader = expr.ExpressionReader(StreamType.Reader);
 
 pub const Label = struct {
-    allocator: Allocator,
-    stream: *StreamType,
+    instructions: *instr.Instructions,
 
-    pub fn init(allocator: Allocator, expressions: []const u8) !Label {
-        const stream = try allocator.create(StreamType);
-        stream.* = std.io.fixedBufferStream(expressions);
+    pub fn init(instructions: *instr.Instructions) !Label {
         return .{
-            .allocator = allocator,
-            .stream = stream,
+            .instructions = instructions,
         };
-    }
-
-    pub fn deinit(self: *Label) void {
-        self.allocator.destroy(self.stream);
-    }
-
-    pub fn reader(self: *Label) ExpressionReader {
-        return expr.expressionReader(self.stream.reader());
     }
 };
 
@@ -265,9 +254,9 @@ pub const Frame = struct {
     allocator: Allocator,
     locals: []Value,
     instance: ModuleInstance,
-    functionInstance: ?FunctionInstance,
+    functionInstance: ?*FunctionInstance,
 
-    pub fn init(allocator: Allocator, params: []const Value, locals: mod.Locals, instance: ModuleInstance, functionInstance: ?FunctionInstance) !Frame {
+    pub fn init(allocator: Allocator, params: []const Value, locals: mod.Locals, instance: ModuleInstance, functionInstance: ?*FunctionInstance) !Frame {
         return .{
             .allocator = allocator,
             .locals = try initLocals(allocator, params, locals),

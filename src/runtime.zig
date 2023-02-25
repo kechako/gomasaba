@@ -41,7 +41,7 @@ pub const VM = struct {
 
     pub fn start(self: *VM) !Result {
         if (self.instance.start) |st| {
-            const instance = try self.instance.getFunctionInstance(st.function_index);
+            var instance = try self.instance.getFunctionInstance(st.function_index);
 
             return try self.invoke(instance);
         }
@@ -55,7 +55,7 @@ pub const VM = struct {
         return try self.invoke(instance);
     }
 
-    fn invoke(self: *VM, instance: FunctionInstance) !Result {
+    fn invoke(self: *VM, instance: *FunctionInstance) !Result {
         var ctx = Context.init(self.allocator);
         defer ctx.deinit();
 
@@ -64,19 +64,56 @@ pub const VM = struct {
         var stack = &ctx.stack;
         var label = try stack.currentLabel();
         var frame = try stack.currentFrame();
-        var reader = label.reader();
+        var instructions = label.instructions;
 
-        loop: while (try reader.next()) |op| {
-            //std.debug.print("OP: {s}\n", .{@tagName(op)});
+        loop: while (try instructions.next()) |instruction| {
+            //std.debug.print("OP: {s}\n", .{@tagName(instruction)});
 
-            switch (op) {
-                .I32Const => {
-                    const value = try reader.readSigned(i32);
-                    try ctx.stack.pushValue(.{
-                        .i32 = value,
-                    });
+            switch (instruction) {
+                .@"end" => {
+                    try self.finalizeFunction(&ctx);
+                    label = stack.currentLabel() catch |err| {
+                        if (err == error.LabelNotFound) {
+                            break :loop;
+                        }
+                        return err;
+                    };
+                    frame = try stack.currentFrame();
+                    instructions = label.instructions;
                 },
-                .I32Add => {
+                .@"return" => {
+                    try self.finalizeFunction(&ctx);
+                    label = stack.currentLabel() catch |err| {
+                        if (err == error.LabelNotFound) {
+                            break :loop;
+                        }
+                        return err;
+                    };
+                    frame = try stack.currentFrame();
+                    instructions = label.instructions;
+                },
+                .@"call" => |idx| {
+                    const funcInstance = try frame.instance.getFunctionInstance(idx);
+                    try self.initFunction(&ctx, funcInstance);
+                    label = try stack.currentLabel();
+                    frame = try stack.currentFrame();
+                    instructions = label.instructions;
+                },
+                .@"drop" => _ = try ctx.stack.popValue(),
+                .@"local.get" => |idx| {
+                    const value = try frame.getLocal(idx);
+                    try stack.pushValue(value);
+                },
+                .@"local.set" => |idx| try self.push(&ctx, frame, idx),
+                .@"local.tee" => |idx| {
+                    const value = try stack.popValue();
+                    try stack.pushValue(value);
+                    try stack.pushValue(value);
+
+                    try self.push(&ctx, frame, idx);
+                },
+                .@"i32.const" => |v| try ctx.stack.pushValue(.{ .i32 = v }),
+                .@"i32.add" => {
                     const c2 = try stack.popValue();
                     if (c2 != .i32) return error.InvalidStack;
                     const c1 = try stack.popValue();
@@ -86,7 +123,7 @@ pub const VM = struct {
                         .i32 = c1.i32 + c2.i32,
                     });
                 },
-                .I32Sub => {
+                .@"i32.sub" => {
                     const c2 = try stack.popValue();
                     if (c2 != .i32) return error.InvalidStack;
                     const c1 = try stack.popValue();
@@ -96,7 +133,7 @@ pub const VM = struct {
                         .i32 = c1.i32 - c2.i32,
                     });
                 },
-                .I32Mul => {
+                .@"i32.mul" => {
                     const c2 = try stack.popValue();
                     if (c2 != .i32) return error.InvalidStack;
                     const c1 = try stack.popValue();
@@ -106,7 +143,7 @@ pub const VM = struct {
                         .i32 = c1.i32 * c2.i32,
                     });
                 },
-                .I32DivS => {
+                .@"i32.div_s" => {
                     const c2 = try stack.popValue();
                     if (c2 != .i32) return error.InvalidStack;
                     const c1 = try stack.popValue();
@@ -118,59 +155,8 @@ pub const VM = struct {
                         .i32 = @divTrunc(c1.i32, c2.i32),
                     });
                 },
-                .LocalGet => {
-                    const idx = try reader.readUnsigned(u32);
-                    const value = try frame.getLocal(idx);
-                    try stack.pushValue(value);
-                },
-                .LocalSet => {
-                    const idx = try reader.readUnsigned(u32);
-                    try self.push(&ctx, frame, idx);
-                },
-                .LocalTee => {
-                    const idx = try reader.readUnsigned(u32);
-
-                    const value = try stack.popValue();
-                    try stack.pushValue(value);
-                    try stack.pushValue(value);
-
-                    try self.push(&ctx, frame, idx);
-                },
-                .Drop => {
-                    _ = try ctx.stack.popValue();
-                },
-                .Call => {
-                    const idx = try reader.readUnsigned(u32);
-                    const funcInstance = try frame.instance.getFunctionInstance(idx);
-                    try self.initFunction(&ctx, funcInstance);
-                    label = try stack.currentLabel();
-                    frame = try stack.currentFrame();
-                    reader = label.reader();
-                },
-                .End => {
-                    try self.finalizeFunction(&ctx);
-                    label = stack.currentLabel() catch |err| {
-                        if (err == error.LabelNotFound) {
-                            break :loop;
-                        }
-                        return err;
-                    };
-                    frame = try stack.currentFrame();
-                    reader = label.reader();
-                },
-                .Return => {
-                    try self.finalizeFunction(&ctx);
-                    label = stack.currentLabel() catch |err| {
-                        if (err == error.LabelNotFound) {
-                            break :loop;
-                        }
-                        return err;
-                    };
-                    frame = try stack.currentFrame();
-                    reader = label.reader();
-                },
                 else => {
-                    _ = try std.io.getStdErr().write(@tagName(op));
+                    _ = try std.io.getStdErr().write(@tagName(instruction));
                     return error.UnsupportedInstruction;
                 },
             }
@@ -179,7 +165,7 @@ pub const VM = struct {
         return try self.popResult(stack, frame);
     }
 
-    fn initFunction(self: *VM, ctx: *Context, instance: FunctionInstance) !void {
+    fn initFunction(self: *VM, ctx: *Context, instance: *FunctionInstance) !void {
         var stack = &ctx.stack;
 
         const paramLen = instance.function_type.parameter_types.len;
@@ -216,7 +202,7 @@ pub const VM = struct {
         }
 
         // label
-        const label = try Label.init(self.allocator, instance.code.expressions);
+        const label = try Label.init(&instance.code.instructions);
         try stack.pushLabel(label);
 
         // frame
@@ -232,8 +218,7 @@ pub const VM = struct {
         defer result.deinit();
 
         _ = try stack.popFrame();
-        var label = try stack.popLabel();
-        label.deinit();
+        _ = try stack.popLabel();
 
         for (result.values) |value| {
             try stack.pushValue(value);

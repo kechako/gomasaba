@@ -8,7 +8,7 @@ const instr = mod.instr;
 pub const ModuleInstance = struct {
     allocator: Allocator,
     module: mod.Module,
-    functions: []const FunctionInstance,
+    functions: []FunctionInstance,
     start: ?StartInstance,
     exports: []const ExportInstance,
 
@@ -27,7 +27,7 @@ pub const ModuleInstance = struct {
         self.allocator.free(self.exports);
     }
 
-    fn initFunctions(allocator: Allocator, module: mod.Module) ![]const FunctionInstance {
+    fn initFunctions(allocator: Allocator, module: mod.Module) ![]FunctionInstance {
         var functions: []FunctionInstance = &[_]FunctionInstance{};
         const funcSec = module.function_section orelse return functions;
         const codeSec = module.code_section orelse return error.CodeSectionNotFound;
@@ -88,7 +88,7 @@ pub const ModuleInstance = struct {
         return exports;
     }
 
-    pub fn findFunctionInstance(self: ModuleInstance, name: []const u8) !FunctionInstance {
+    pub fn findFunctionInstance(self: ModuleInstance, name: []const u8) !*FunctionInstance {
         const exp = try self.findExport(name);
         const idx = switch (exp.value) {
             .function => |f| f,
@@ -98,11 +98,11 @@ pub const ModuleInstance = struct {
         return try self.getFunctionInstance(idx);
     }
 
-    pub fn getFunctionInstance(self: ModuleInstance, idx: u32) !FunctionInstance {
+    pub fn getFunctionInstance(self: ModuleInstance, idx: u32) !*FunctionInstance {
         if (self.functions.len <= idx) {
             return error.FunctionNotFound;
         }
-        return self.functions[idx];
+        return &self.functions[idx];
     }
 
     fn findExport(self: ModuleInstance, name: []const u8) !ExportInstance {

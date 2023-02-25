@@ -239,7 +239,7 @@ pub const WatEncoder = struct {
                 }
             }
 
-            try self.writeExpressions(writer, code.expressions);
+            try self.writeInstructions(writer, code.instructions);
 
             self.decreaseIndent();
 
@@ -251,71 +251,29 @@ pub const WatEncoder = struct {
         try writer.print("(local (;{d};) {s})", .{ index, local });
     }
 
-    fn writeExpressions(self: *WatEncoder, writer: anytype, exp: []const u8) !void {
-        var fbs = std.io.fixedBufferStream(exp);
-        const r = expr.expressionReader(fbs.reader());
-        while (try r.next()) |op| {
-            if (op == .End) {
+    fn writeInstructions(self: *WatEncoder, writer: anytype, instructions: instr.Instructions) !void {
+        var instrs = instructions;
+        while (try instrs.next()) |instruction| {
+            if (instruction == .@"end") {
                 break;
             }
 
             try self.writeIndent(writer);
 
-            switch (op) {
-                .Call => {
-                    const v = try r.readUnsigned(u32);
-                    try writer.print("call {d}", .{v});
-                },
-                .Return => {
-                    try writer.writeAll("return");
-                },
-                .LocalGet => {
-                    const v = try r.readUnsigned(u32);
-                    try writer.print("local.get {d}", .{v});
-                },
-                .LocalSet => {
-                    const v = try r.readUnsigned(u32);
-                    try writer.print("local.set {d}", .{v});
-                },
-                .LocalTee => {
-                    const v = try r.readUnsigned(u32);
-                    try writer.print("local.tee {d}", .{v});
-                },
-                .I32Const => {
-                    const v = try r.readUnsigned(u32);
-                    try writer.print("i32.const {d}", .{v});
-                },
-                .I32Add => {
-                    try writer.writeAll("i32.add");
-                },
-                .I32Sub => {
-                    try writer.writeAll("i32.sub");
-                },
-                .I32Mul => {
-                    try writer.writeAll("i32.mul");
-                },
-                .I32DivS => {
-                    try writer.writeAll("i32.div_s");
-                },
-                .I32Store => {
-                    const a = blk: {
-                        const n = try r.readUnsigned(u32);
-                        break :blk std.math.pow(u32, 2, n);
-                    };
-                    const o = try r.readUnsigned(u32);
-                    try writer.writeAll("i32.store");
-                    if (o > 0) {
-                        try writer.print(" offset={d}", .{o});
-                    }
-                    if (a > 0 and a != 4) {
-                        try writer.print(" align={d}", .{a});
-                    }
-                },
-                .Drop => {
-                    try writer.writeAll("drop");
-                },
+            switch (instruction) {
+                .@"return" => try writer.writeAll("return"),
+                .@"call" => |idx| try writer.print("call {d}", .{idx}),
+                .@"drop" => try writer.writeAll("drop"),
+                .@"local.get" => |idx| try writer.print("local.get {d}", .{idx}),
+                .@"local.set" => |idx| try writer.print("local.set {d}", .{idx}),
+                .@"local.tee" => |idx| try writer.print("local.tee {d}", .{idx}),
+                .@"i32.const" => |v| try writer.print("i32.const {d}", .{v}),
+                .@"i32.add" => try writer.writeAll("i32.add"),
+                .@"i32.sub" => try writer.writeAll("i32.sub"),
+                .@"i32.mul" => try writer.writeAll("i32.mul"),
+                .@"i32.div_s" => try writer.writeAll("i32.div_s"),
                 else => {
-                    std.debug.print("op: {any}\n", .{op});
+                    std.debug.print("op: {any}\n", .{instruction});
                     return error.UnsupportedInstruction;
                 },
             }
@@ -374,7 +332,7 @@ pub const WatEncoder = struct {
 
             try self.writeGlobalType(writer, global.global_type);
 
-            try self.writeConstantExpressions(writer, global.expressions);
+            try self.writeConstantInstructions(writer, global.instructions);
 
             try writer.writeByte(')');
         }
@@ -392,14 +350,14 @@ pub const WatEncoder = struct {
         }
     }
 
-    fn writeConstantExpressions(_: *WatEncoder, writer: anytype, exp: []const u8) !void {
+    fn writeConstantInstructions(_: *WatEncoder, writer: anytype, instructions: instr.Instructions) !void {
+        var instrs = instructions;
+
         try writer.writeByte('(');
 
-        var fbs = std.io.fixedBufferStream(exp);
-        const r = expr.expressionReader(fbs.reader());
         var first = true;
-        while (try r.next()) |op| {
-            if (op == .End) {
+        while (try instrs.next()) |op| {
+            if (op == .@"end") {
                 break;
             }
 
@@ -409,35 +367,11 @@ pub const WatEncoder = struct {
                 try writer.writeByte(' ');
 
             switch (op) {
-                .I32Const => {
-                    const v = try r.readSigned(i32);
-                    try writer.print("i32.const {d}", .{v});
-                },
-                .I64Const => {
-                    const v = try r.readSigned(i64);
-                    try writer.print("i64.const {d}", .{v});
-                },
-                .F32Const => {
-                    const v = try r.readFloat(f32);
-                    try writer.print("f32.const {d}", .{v});
-                },
-                .F64Const => {
-                    const v = try r.readFloat(f64);
-                    try writer.print("f64.const {d}", .{v});
-                },
-                .GlobalGet => {
-                    const id = try r.readUnsigned(u32);
-                    try writer.print("globa.get {d}", .{id});
-                },
-                .RefNull => {
-                    const b = try r.readSigned(i8);
-                    const heapType = try mod.ValueType.fromInt(b);
-                    try writer.print("ref.null {s}", .{heapType});
-                },
-                .RefFunc => {
-                    const idx = try r.readUnsigned(u32);
-                    try writer.print("ref.func {d}", .{idx});
-                },
+                .@"i32.const" => |v| try writer.print("i32.const {d}", .{v}),
+                .@"i64.const" => |v| try writer.print("i64.const {d}", .{v}),
+                .@"f32.const" => |v| try writer.print("f32.const {d}", .{v}),
+                .@"f64.const" => |v| try writer.print("f64.const {d}", .{v}),
+                .@"global.get" => |idx| try writer.print("global.get {d}", .{idx}),
                 else => return error.UnsupportedInstruction,
             }
         }
@@ -503,7 +437,7 @@ pub const WatEncoder = struct {
             }
 
             if (!data.mode.passive) {
-                try self.writeConstantExpressions(writer, data.offset);
+                try self.writeConstantInstructions(writer, data.offset);
             }
 
             try writer.writeByte(' ');
