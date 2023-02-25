@@ -512,16 +512,16 @@ pub const Instruction = union(Opecode) {
     @"f32.const": f32, // not implemented
     @"f64.const": f64, // not implemented
 
-    @"i32.eqz": void, // not implemented
-    @"i32.eq": void, // not implemented
-    @"i32.ne": void, // not implemented
-    @"i32.lt_s": void, // not implemented
+    @"i32.eqz": void,
+    @"i32.eq": void,
+    @"i32.ne": void,
+    @"i32.lt_s": void,
     @"i32.lt_u": void, // not implemented
-    @"i32.gt_s": void, // not implemented
+    @"i32.gt_s": void,
     @"i32.gt_u": void, // not implemented
-    @"i32.le_s": void, // not implemented
+    @"i32.le_s": void,
     @"i32.le_u": void, // not implemented
-    @"i32.ge_s": void, // not implemented
+    @"i32.ge_s": void,
     @"i32.ge_u": void, // not implemented
 
     @"i64.eqz": void, // not implemented

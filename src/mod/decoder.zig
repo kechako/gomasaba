@@ -660,6 +660,13 @@ pub const Decoder = struct {
                     const v = try r.readSigned(i32);
                     instr = .{ .@"i32.const" = v };
                 },
+                .@"i32.eqz" => instr = Instruction.@"i32.eqz",
+                .@"i32.eq" => instr = Instruction.@"i32.eq",
+                .@"i32.ne" => instr = Instruction.@"i32.ne",
+                .@"i32.lt_s" => instr = Instruction.@"i32.lt_s",
+                .@"i32.gt_s" => instr = Instruction.@"i32.gt_s",
+                .@"i32.le_s" => instr = Instruction.@"i32.le_s",
+                .@"i32.ge_s" => instr = Instruction.@"i32.ge_s",
                 .@"i32.add" => instr = Instruction.@"i32.add",
                 .@"i32.sub" => instr = Instruction.@"i32.sub",
                 .@"i32.mul" => instr = Instruction.@"i32.mul",

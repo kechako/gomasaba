@@ -113,6 +113,74 @@ pub const VM = struct {
                     try self.push(&ctx, frame, idx);
                 },
                 .@"i32.const" => |v| try ctx.stack.pushValue(.{ .i32 = v }),
+                .@"i32.eqz" => {
+                    const c = try stack.popValue();
+                    if (c != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c.i32 == 0),
+                    });
+                },
+                .@"i32.eq" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 == c2.i32),
+                    });
+                },
+                .@"i32.ne" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 != c2.i32),
+                    });
+                },
+                .@"i32.lt_s" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 < c2.i32),
+                    });
+                },
+                .@"i32.gt_s" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 > c2.i32),
+                    });
+                },
+                .@"i32.le_s" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 <= c2.i32),
+                    });
+                },
+                .@"i32.ge_s" => {
+                    const c2 = try stack.popValue();
+                    if (c2 != .i32) return error.InvalidStack;
+                    const c1 = try stack.popValue();
+                    if (c1 != .i32) return error.InvalidStack;
+
+                    try ctx.stack.pushValue(.{
+                        .i32 = @boolToInt(c1.i32 >= c2.i32),
+                    });
+                },
                 .@"i32.add" => {
                     const c2 = try stack.popValue();
                     if (c2 != .i32) return error.InvalidStack;
