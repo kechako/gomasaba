@@ -65,7 +65,7 @@ const unsignedTests = [_]struct {
     .{ .v = 0xFFFFFFFF, .n = 5, .b = @as([]const u8, &[_]u8{ 0xFF, 0xFF, 0xFF, 0xFF, 0xF }) },
 };
 
-test "mod.leb128.readUnsigned()" {
+test "util.leb128.readUnsigned()" {
     for (unsignedTests) |tt| {
         var fbs = std.io.fixedBufferStream(tt.b);
         var v: u32 = undefined;
@@ -75,7 +75,7 @@ test "mod.leb128.readUnsigned()" {
     }
 }
 
-test "mod.leb128.writeUnsigned()" {
+test "util.leb128.writeUnsigned()" {
     for (unsignedTests) |tt| {
         var buf = std.ArrayList(u8).init(test_allocator);
         defer buf.deinit();
@@ -188,7 +188,7 @@ const signedTests = [_]struct {
     .{ .v = @bitCast(i32, @as(u32, 0x80000000)), .n = 5, .b = @as([]const u8, &[_]u8{ 0x80, 0x80, 0x80, 0x80, 0x78 }) },
 };
 
-test "mod.leb128.readSigned()" {
+test "util.leb128.readSigned()" {
     for (signedTests) |tt| {
         var fbs = std.io.fixedBufferStream(tt.b);
         var v: i32 = undefined;
@@ -198,7 +198,7 @@ test "mod.leb128.readSigned()" {
     }
 }
 
-test "mod.leb128.writeSigned()" {
+test "util.leb128.writeSigned()" {
     for (signedTests) |tt| {
         var buf = std.ArrayList(u8).init(test_allocator);
         defer buf.deinit();
@@ -219,7 +219,7 @@ fn getBitCount(comptime T: type, comptime signedness: std.builtin.Signedness) Lo
     };
 }
 
-test "mod.leb128.getBitCount()" {
+test "util.leb128.getBitCount()" {
     try expectEqual(@as(u6, 16), getBitCount(u16, .unsigned));
     try expectEqual(@as(u7, 32), getBitCount(u32, .unsigned));
     try expectEqual(@as(u8, 64), getBitCount(u64, .unsigned));
@@ -232,7 +232,7 @@ fn getMaxBytes(comptime bitCount: anytype) @TypeOf(bitCount) {
     return (1 + (bitCount - 1) / 7);
 }
 
-test "mod.leb128.getMaxBytes()" {
+test "util.leb128.getMaxBytes()" {
     try expectEqual(3, getMaxBytes(16));
     try expectEqual(5, getMaxBytes(32));
     try expectEqual(10, getMaxBytes(64));

@@ -1,11 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+
 const mod = @import("../mod.zig");
-const leb128 = mod.leb128;
-const Opecode = mod.instr.Opecode;
-const Instruction = mod.instr.Instruction;
-const Instructions = mod.instr.Instructions;
-const expr = mod.expr;
+const util = @import("../util.zig");
+const leb128 = util.leb128;
+const instr = @import("../instr.zig");
+
+const Opecode = instr.Opecode;
+const Instruction = instr.Instruction;
 
 pub const Decoder = struct {
     allocator: Allocator,
@@ -398,11 +400,14 @@ pub const Decoder = struct {
     fn readGlobal(self: Decoder, reader: anytype) !mod.Global {
         const typ = try self.readGlobalType(reader);
 
-        const instructions = try self.readConstantInstructions(reader, typ.type);
+        var parser = instr.codeParser(self.allocator, reader);
+        defer parser.deinit();
+
+        const code = try parser.parse();
 
         return .{
             .global_type = typ,
-            .instructions = instructions,
+            .code = code,
         };
     }
 
@@ -416,104 +421,6 @@ pub const Decoder = struct {
             .type = typ,
             .flag = flag,
         };
-    }
-
-    fn readConstantInstructions(self: Decoder, reader: anytype, typ: mod.ValueType) !*Instructions {
-        var instructions = try self.allocator.create(Instructions);
-        instructions.* = Instructions.init(self.allocator);
-
-        var r = expr.expressionReader(reader);
-        {
-            var instr: Instruction = undefined;
-
-            const opcode = try r.next();
-            if (opcode) |op| {
-                switch (typ) {
-                    .i32 => {
-                        switch (op) {
-                            .@"i32.const" => {
-                                const v = try r.readSigned(i32);
-                                instr = .{ .@"i32.const" = v };
-                            },
-                            .@"global.get" => {
-                                const idx = try r.readUnsigned(u32);
-                                instr = .{ .@"global.get" = idx };
-                            },
-                            else => return error.InvalidConstantExpressions,
-                        }
-                    },
-                    .i64 => {
-                        switch (op) {
-                            .@"i64.const" => {
-                                const v = try r.readSigned(i64);
-                                instr = .{ .@"i64.const" = v };
-                            },
-                            .@"global.get" => {
-                                const idx = try r.readUnsigned(u32);
-                                instr = .{ .@"global.get" = idx };
-                            },
-                            else => return error.InvalidConstantExpressions,
-                        }
-                    },
-                    .f32 => {
-                        switch (op) {
-                            .@"f32.const" => {
-                                const v = try r.readFloat(f32);
-                                instr = .{ .@"f32.const" = v };
-                            },
-                            .@"global.get" => {
-                                const idx = try r.readUnsigned(u32);
-                                instr = .{ .@"global.get" = idx };
-                            },
-                            else => return error.InvalidConstantExpressions,
-                        }
-                    },
-                    .f64 => {
-                        switch (op) {
-                            .@"f64.const" => {
-                                const v = try r.readFloat(f64);
-                                instr = .{ .@"f64.const" = v };
-                            },
-                            .@"global.get" => {
-                                const idx = try r.readUnsigned(u32);
-                                instr = .{ .@"global.get" = idx };
-                            },
-                            else => return error.InvalidConstantExpressions,
-                        }
-                    },
-                    //.funcref, .externref => {
-                    //    switch (op) {
-                    //        .@"ref.null" => {
-                    //            const b = try r.readSigned(i8);
-                    //            const valType = try mod.ValueType.fromInt(b);
-                    //            if (valType != .funcref) return error.InvalidConstantExpressions;
-                    //        },
-                    //        .@"ref.func" => {
-                    //            _ = try r.readUnsigned(u32);
-                    //        },
-                    //        else => return error.InvalidConstantExpressions,
-                    //    }
-                    //},
-                    else => return error.UnsupportedInstruction,
-                }
-            } else return error.InvalidConstantExpressions;
-
-            try instructions.push(instr);
-        }
-
-        // End
-        {
-            const opcode = try r.next();
-            if (opcode) |op| {
-                if (op != .@"end") {
-                    return error.InvalidConstantExpressions;
-                }
-
-                try instructions.push(Instruction.@"end");
-            }
-        }
-
-        return instructions;
     }
 
     fn readExportSection(self: Decoder, reader: anytype) !mod.ExportSection {
@@ -606,11 +513,13 @@ pub const Decoder = struct {
 
         const locals = try self.readLocals(r);
 
-        const instructions = try self.readInstructions(r);
+        var parser = instr.codeParser(self.allocator, r);
+        defer parser.deinit();
+        const code = try parser.parse();
 
         return .{
             .locals = locals,
-            .instructions = instructions,
+            .code = code,
         };
     }
 
@@ -623,66 +532,6 @@ pub const Decoder = struct {
         }
 
         return locals;
-    }
-
-    fn readInstructions(self: Decoder, reader: anytype) !*Instructions {
-        var instructions = try self.allocator.create(Instructions);
-        instructions.* = Instructions.init(self.allocator);
-
-        var r = expr.expressionReader(reader);
-        while (try r.next()) |op| {
-            //std.debug.print("OP: {s}\n", .{@tagName(op)});
-
-            var exit = false;
-            var instr: Instruction = undefined;
-            switch (op) {
-                .@"end" => {
-                    instr = Instruction.@"end";
-                    exit = true;
-                },
-                .@"return" => instr = Instruction.@"return",
-                .@"call" => {
-                    const idx = try r.readUnsigned(u32);
-                    instr = .{ .@"call" = idx };
-                },
-                .@"drop" => instr = Instruction.@"drop",
-                .@"local.get" => {
-                    const idx = try r.readUnsigned(u32);
-                    instr = .{ .@"local.get" = idx };
-                },
-                .@"local.set" => {
-                    const idx = try r.readUnsigned(u32);
-                    instr = .{ .@"local.set" = idx };
-                },
-                .@"local.tee" => {
-                    const idx = try r.readUnsigned(u32);
-                    instr = .{ .@"local.tee" = idx };
-                },
-                .@"i32.const" => {
-                    const v = try r.readSigned(i32);
-                    instr = .{ .@"i32.const" = v };
-                },
-                .@"i32.eqz" => instr = Instruction.@"i32.eqz",
-                .@"i32.eq" => instr = Instruction.@"i32.eq",
-                .@"i32.ne" => instr = Instruction.@"i32.ne",
-                .@"i32.lt_s" => instr = Instruction.@"i32.lt_s",
-                .@"i32.gt_s" => instr = Instruction.@"i32.gt_s",
-                .@"i32.le_s" => instr = Instruction.@"i32.le_s",
-                .@"i32.ge_s" => instr = Instruction.@"i32.ge_s",
-                .@"i32.add" => instr = Instruction.@"i32.add",
-                .@"i32.sub" => instr = Instruction.@"i32.sub",
-                .@"i32.mul" => instr = Instruction.@"i32.mul",
-                .@"i32.div_s" => instr = Instruction.@"i32.div_s",
-                else => return error.UnsupportedInstruction,
-            }
-            try instructions.push(instr);
-
-            if (exit) {
-                break;
-            }
-        }
-
-        return instructions;
     }
 
     fn readLocal(self: Decoder, reader: anytype) !mod.Local {
@@ -717,9 +566,11 @@ pub const Decoder = struct {
             memory_index = try self.readUnsigned(u32, reader);
         }
 
-        var offset: ?*Instructions = null;
+        var offset: ?instr.Code = null;
         if (!mode.passive) {
-            offset = try self.readConstantInstructions(reader, mod.ValueType.i32);
+            var parser = instr.codeParser(self.allocator, reader);
+            defer parser.deinit();
+            offset = try parser.parse();
         }
 
         const data = try self.readBytes(reader);
@@ -753,3 +604,110 @@ pub const Decoder = struct {
         return v;
     }
 };
+
+const test_allocator = std.testing.allocator;
+const expectEqual = std.testing.expectEqual;
+const expectSlice = std.testing.expectSlice;
+
+test "mod.Decoder" {
+    const wasm_header = &[_]u8{
+        0x00, 0x61, 0x73, 0x6d, // magic
+        0x01, 0x00, 0x00, 0x00, // version
+    };
+
+    const wasm_type_section = &[_]u8{
+        // type section
+        0x01, 0x06, 0x01, // code, size, count
+        0x60, // function type
+        0x01, 0x7f, // param: count, i32
+        0x01, 0x7f, // result: count, i32
+    };
+
+    const wasm_function_section = &[_]u8{
+        // function section
+        0x03, 0x02, 0x01, // code, size, count
+        0x00, // type index
+    };
+
+    const wasm_code_section = &[_]u8{
+        // code section
+        0x0a, 0x0b, 0x01, // code, size, count
+        0x09, // code size,
+        0x01, 0x02, 0x7f, // local count, repeat count, i32
+        // instructions
+        0x41, 0x0a, // i32.const 10
+        0x41, 0x14, // i32.const 20
+        0x6a, // i32.add
+        0x0b, // end
+    };
+
+    const wasm = wasm_header ++ wasm_type_section ++ wasm_function_section ++ wasm_code_section;
+
+    //for (wasm) |b| {
+    //    std.debug.print("{x:0>2} ", .{b});
+    //}
+    //std.debug.print("\n", .{});
+
+    var stream = std.io.fixedBufferStream(wasm);
+    var module = try Decoder.init(test_allocator).decode(stream.reader());
+    defer module.free(test_allocator);
+
+    // type section
+    if (module.type_section) |sec| {
+        try expectEqual(@as(usize, 1), sec.function_types.len);
+
+        const func_type = sec.function_types[0];
+        try expectEqual(@as(usize, 1), func_type.parameter_types.len);
+        try expectEqual(@as(usize, 1), func_type.result_types.len);
+
+        const param_type = func_type.parameter_types[0];
+        try expectEqual(mod.ValueType.i32, param_type);
+        const result_type = func_type.result_types[0];
+        try expectEqual(mod.ValueType.i32, result_type);
+    } else {
+        return error.NoTypeSection;
+    }
+
+    // fuction section
+    if (module.function_section) |sec| {
+        try expectEqual(@as(usize, 1), sec.type_indexes.len);
+        try expectEqual(@as(u32, 0), sec.type_indexes[0]);
+    }
+
+    // code section
+    if (module.code_section) |sec| {
+        try expectEqual(@as(usize, 1), sec.codes.len);
+
+        const code = sec.codes[0];
+
+        try expectEqual(@as(usize, 1), code.locals.len);
+        const local = code.locals[0];
+        try expectEqual(@as(usize, 2), local.count);
+        try expectEqual(mod.ValueType.i32, local.value_type);
+
+        const c = code.code;
+        try expectEqual(@as(usize, 4), c.len);
+        {
+            // i32.const 10
+            const inst = c[0];
+            try expectEqual(Opecode.@"i32.const", inst);
+            try expectEqual(@as(i32, 10), inst.@"i32.const");
+        }
+        {
+            // i32.const 20
+            const inst = c[1];
+            try expectEqual(Opecode.@"i32.const", inst);
+            try expectEqual(@as(i32, 20), inst.@"i32.const");
+        }
+        {
+            // i32.add
+            const inst = c[2];
+            try expectEqual(Opecode.@"i32.add", inst);
+        }
+        {
+            // end
+            const inst = c[3];
+            try expectEqual(Opecode.@"end", inst);
+        }
+    }
+}

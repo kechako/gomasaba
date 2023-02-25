@@ -1,7 +1,7 @@
 const std = @import("std");
+
 const mod = @import("../mod.zig");
-const expr = mod.expr;
-const instr = mod.instr;
+const instr = @import("../instr.zig");
 
 pub const WatEncoder = struct {
     indent: usize,
@@ -239,7 +239,7 @@ pub const WatEncoder = struct {
                 }
             }
 
-            try self.writeInstructions(writer, code.instructions);
+            try self.writeCode(writer, code.code);
 
             self.decreaseIndent();
 
@@ -251,8 +251,10 @@ pub const WatEncoder = struct {
         try writer.print("(local (;{d};) {s})", .{ index, local });
     }
 
-    fn writeInstructions(self: *WatEncoder, writer: anytype, instructions: *instr.Instructions) !void {
-        while (try instructions.next()) |instruction| {
+    fn writeCode(self: *WatEncoder, writer: anytype, code: instr.Code) !void {
+        var reader = instr.CodeReader.init(code);
+
+        while (reader.next()) |instruction| {
             if (instruction == .@"end") {
                 break;
             }
@@ -338,7 +340,7 @@ pub const WatEncoder = struct {
 
             try self.writeGlobalType(writer, global.global_type);
 
-            try self.writeConstantInstructions(writer, global.instructions);
+            try self.writeConstantCode(writer, global.code);
 
             try writer.writeByte(')');
         }
@@ -356,11 +358,12 @@ pub const WatEncoder = struct {
         }
     }
 
-    fn writeConstantInstructions(_: *WatEncoder, writer: anytype, instructions: *instr.Instructions) !void {
+    fn writeConstantCode(_: *WatEncoder, writer: anytype, code: instr.Code) !void {
+        var reader = instr.CodeReader.init(code);
         try writer.writeByte('(');
 
         var first = true;
-        while (try instructions.next()) |op| {
+        while (reader.next()) |op| {
             if (op == .@"end") {
                 break;
             }
@@ -442,7 +445,7 @@ pub const WatEncoder = struct {
 
             if (!data.mode.passive) {
                 if (data.offset) |offset| {
-                    try self.writeConstantInstructions(writer, offset);
+                    try self.writeConstantCode(writer, offset);
                 }
             }
 

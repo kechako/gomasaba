@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const expectEqual = std.testing.expectEqual;
@@ -6,10 +7,12 @@ const expectEqualSlices = std.testing.expectEqualSlices;
 const expectEqualStrings = std.testing.expectEqualStrings;
 const test_allocator = std.testing.allocator;
 
+const instr = @import("./instr.zig");
+
 pub const Module = struct {
     version: u32,
 
-    custom_sections: []const CustomSection = &[_]CustomSection{},
+    custom_sections: ?[]const CustomSection = null,
     type_section: ?TypeSection = null,
     import_section: ?ImportSection = null,
     function_section: ?FunctionSection = null,
@@ -22,6 +25,41 @@ pub const Module = struct {
     code_section: ?CodeSection = null,
     data_section: ?DataSection = null,
     data_count_section: ?DataCountSection = null,
+
+    pub fn free(self: Module, allocator: Allocator) void {
+        if (self.custom_sections) |sections| {
+            for (sections) |sec| {
+                sec.free(allocator);
+            }
+        }
+        if (self.type_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.import_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.function_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.table_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.memory_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.global_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.export_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.code_section) |sec| {
+            sec.free(allocator);
+        }
+        if (self.data_section) |sec| {
+            sec.free(allocator);
+        }
+    }
 };
 
 pub const SectionCode = enum(u8) {
@@ -65,15 +103,32 @@ pub const SectionCode = enum(u8) {
 pub const CustomSection = struct {
     name: []const u8,
     bytes: []const u8,
+
+    fn free(self: CustomSection, allocator: Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.bytes);
+    }
 };
 
 pub const TypeSection = struct {
     function_types: []const FunctionType,
+
+    fn free(self: TypeSection, allocator: Allocator) void {
+        for (self.function_types) |typ| {
+            typ.free(allocator);
+        }
+        allocator.free(self.function_types);
+    }
 };
 
 pub const FunctionType = struct {
     parameter_types: ResultType,
     result_types: ResultType,
+
+    fn free(self: FunctionType, allocator: Allocator) void {
+        allocator.free(self.parameter_types);
+        allocator.free(self.result_types);
+    }
 };
 
 pub const ResultType = []const ValueType;
@@ -150,7 +205,7 @@ pub const ValueType = enum(i8) {
     }
 };
 
-test "mod.mod.ValueType.fromInt()" {
+test "mod.ValueType.fromInt()" {
     // number types
     try expectEqual(ValueType.i32, try ValueType.fromInt(@as(i8, -0x01)));
     try expectEqual(ValueType.i64, try ValueType.fromInt(@as(i8, -0x02)));
@@ -171,7 +226,7 @@ test "mod.mod.ValueType.fromInt()" {
     try expectError(error.InvalidValueType, ValueType.fromInt(@as(i8, 0x00)));
 }
 
-test "mod.mod.ValueType.format()" {
+test "mod.ValueType.format()" {
     const i32_string = try std.fmt.allocPrint(test_allocator, "{s}", .{ValueType.i32});
     defer test_allocator.free(i32_string);
     try expectEqualStrings("i32", i32_string);
@@ -207,12 +262,24 @@ test "mod.mod.ValueType.format()" {
 
 pub const ImportSection = struct {
     imports: []const Import,
+
+    fn free(self: ImportSection, allocator: Allocator) void {
+        for (self.imports) |import| {
+            import.free(allocator);
+        }
+        allocator.free(self.imports);
+    }
 };
 
 pub const Import = struct {
     module: []u8,
     name: []u8,
     description: ImportDescription,
+
+    fn free(self: Import, allocator: Allocator) void {
+        allocator.free(self.module);
+        allocator.free(self.name);
+    }
 };
 
 pub const ImportDescriptionType = enum(u8) {
@@ -256,10 +323,18 @@ pub const GlobalImport = struct {
 
 pub const FunctionSection = struct {
     type_indexes: []u32,
+
+    fn free(self: FunctionSection, allocator: Allocator) void {
+        allocator.free(self.type_indexes);
+    }
 };
 
 pub const TableSection = struct {
     tables: []const Table,
+
+    fn free(self: TableSection, allocator: Allocator) void {
+        allocator.free(self.tables);
+    }
 };
 
 pub const Table = struct {
@@ -273,6 +348,10 @@ pub const TableType = struct {
 
 pub const MemorySection = struct {
     memories: []Memory,
+
+    fn free(self: MemorySection, allocator: Allocator) void {
+        allocator.free(self.memories);
+    }
 };
 
 pub const Memory = struct {
@@ -304,11 +383,22 @@ pub const Limits = struct {
 
 pub const GlobalSection = struct {
     globals: []Global,
+
+    fn free(self: GlobalSection, allocator: Allocator) void {
+        for (self.globals) |global| {
+            global.free(allocator);
+        }
+        allocator.free(self.globals);
+    }
 };
 
 pub const Global = struct {
     global_type: GlobalType,
-    instructions: *instr.Instructions,
+    code: instr.Code,
+
+    fn free(self: Global, allocator: Allocator) void {
+        allocator.free(self.code);
+    }
 };
 
 pub const Mutability = enum(u8) {
@@ -333,11 +423,22 @@ pub const GlobalType = struct {
 
 pub const ExportSection = struct {
     exports: []const Export,
+
+    fn free(self: ExportSection, allocator: Allocator) void {
+        for (self.exports) |exp| {
+            exp.free(allocator);
+        }
+        allocator.free(self.exports);
+    }
 };
 
 pub const Export = struct {
     name: []const u8,
     description: ExportDescription,
+
+    fn free(self: Export, allocator: Allocator) void {
+        allocator.free(self.name);
+    }
 };
 
 pub const ExportDescriptionType = enum(u8) {
@@ -391,11 +492,23 @@ pub const ElementSection = struct {};
 
 pub const CodeSection = struct {
     codes: []Code,
+
+    fn free(self: CodeSection, allocator: Allocator) void {
+        for (self.codes) |code| {
+            code.free(allocator);
+        }
+        allocator.free(self.codes);
+    }
 };
 
 pub const Code = struct {
     locals: Locals,
-    instructions: *instr.Instructions,
+    code: instr.Code,
+
+    fn free(self: Code, allocator: Allocator) void {
+        allocator.free(self.locals);
+        allocator.free(self.code);
+    }
 };
 
 pub const Locals = []Local;
@@ -407,6 +520,13 @@ pub const Local = struct {
 
 pub const DataSection = struct {
     datas: []Data,
+
+    fn free(self: DataSection, allocator: Allocator) void {
+        for (self.datas) |data| {
+            data.free(allocator);
+        }
+        allocator.free(self.datas);
+    }
 };
 
 pub const DataMode = packed struct {
@@ -427,17 +547,22 @@ pub const DataMode = packed struct {
 pub const Data = struct {
     mode: DataMode,
     memory_index: u32,
-    offset: ?*instr.Instructions,
+    offset: ?instr.Code,
     data: []const u8,
+
+    fn free(self: Data, allocator: Allocator) void {
+        if (self.offset) |offset| {
+            allocator.free(offset);
+        }
+        allocator.free(self.data);
+    }
 };
 
 pub const DataCountSection = struct {};
 
 pub const Decoder = @import("mod/decoder.zig").Decoder;
 pub const WatEncoder = @import("mod/encoder.zig").WatEncoder;
-pub const TeeReader = @import("mod/tee_reader.zig").TeeReader;
-pub const teeReader = @import("mod/tee_reader.zig").teeReader;
 
-pub const expr = @import("mod/expr.zig");
-pub const instr = @import("mod/instr.zig");
-pub const leb128 = @import("mod/leb128.zig");
+test {
+    std.testing.refAllDecls(@This());
+}

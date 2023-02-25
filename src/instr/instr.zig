@@ -447,7 +447,10 @@ pub const Instruction = union(Opecode) {
     @"nop": void, // not implemented
     @"block": void, // not implemented
     @"loop": void, // not implemented
-    @"if": void, // not implemented
+    @"if": struct {
+        param_arity: u32,
+        return_arity: u32,
+    },
     @"else": void, // not implemented
     @"if_no_else": void, // not implemented
     @"end": void,
@@ -651,53 +654,4 @@ pub const Instruction = union(Opecode) {
     @"i64.extend32_s": void, // not implemented
 
     VectorPrefix: void, // not implemented
-};
-
-pub const Instructions = struct {
-    instructions: ArrayList(Instruction),
-    pos: usize,
-
-    pub fn init(allocator: Allocator) Instructions {
-        return .{
-            .instructions = ArrayList(Instruction).init(allocator),
-            .pos = 0,
-        };
-    }
-
-    pub fn deinit(self: *Instructions) void {
-        self.instructions.deinit();
-    }
-
-    pub fn push(self: *Instructions, instr: Instruction) !void {
-        try self.instructions.append(instr);
-    }
-
-    pub fn peekLast(self: *Instructions) !Instruction {
-        const len = self.instructions.items.len;
-        if (len == 0) {
-            return error.NoInstruction;
-        }
-        return self.instructions.items[len - 1];
-    }
-
-    pub fn reset(self: *Instructions) void {
-        self.pos = 0;
-    }
-
-    pub fn next(self: *Instructions) !?Instruction {
-        if (self.pos < self.instructions.items.len) {
-            defer self.pos += 1;
-            return self.instructions.items[self.pos];
-        } else {
-            return error.EndOfStream;
-        }
-    }
-
-    pub fn skip(self: *Instructions) !void {
-        if (self.pos < self.instructions.items.len) {
-            self.pos += 1;
-        } else {
-            return error.EndOfStream;
-        }
-    }
 };

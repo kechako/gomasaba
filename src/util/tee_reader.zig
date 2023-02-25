@@ -29,7 +29,7 @@ pub fn teeReader(inner_reader: anytype, inner_writer: anytype) TeeReader(@TypeOf
     return .{ .inner_reader = inner_reader, .inner_writer = inner_writer };
 }
 
-test "TeeReader" {
+test "util.TeeReader" {
     const str = "TeeReader test";
     var stream = io.fixedBufferStream(str);
     var list = std.ArrayList(u8).init(test_allocator);

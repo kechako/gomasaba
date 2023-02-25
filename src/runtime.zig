@@ -1,17 +1,30 @@
 const std = @import("std");
 const mem = std.mem;
 const Allocator = std.mem.Allocator;
-const mod = @import("./mod.zig");
-const expr = mod.expr;
-const instr = mod.instr;
 
-const Context = @import("runtime/context.zig").Context;
-const ModuleInstance = @import("runtime/instance.zig").ModuleInstance;
-const FunctionInstance = @import("runtime/instance.zig").FunctionInstance;
+const mod = @import("./mod.zig");
+const instr = @import("./instr.zig");
+const instance = @import("./instance.zig");
+
+pub const Value = @import("runtime/value.zig").Value;
+pub const ValueStack = @import("runtime/value.zig").ValueStack;
+
+pub const Frame = @import("runtime/frame.zig").Frame;
+pub const FrameStack = @import("runtime/frame.zig").FrameStack;
+
+pub const Label = @import("runtime/label.zig").Label;
+pub const LabelStack = @import("runtime/label.zig").LabelStack;
+
+const ModuleInstance = instance.ModuleInstance;
+const FunctionInstance = instance.FunctionInstance;
 
 pub const VM = struct {
     allocator: std.mem.Allocator,
-    instance: ModuleInstance,
+    module: *ModuleInstance,
+
+    value_stack: ValueStack,
+    frame_stack: FrameStack,
+    label_stack: LabelStack,
 
     pub const Result = struct {
         allocator: Allocator,
@@ -30,196 +43,189 @@ pub const VM = struct {
         }
     };
 
-    pub fn init(allocator: Allocator, module: mod.Module) !VM {
-        const instance = try ModuleInstance.init(allocator, module);
-        return .{ .allocator = allocator, .instance = instance };
+    pub fn init(allocator: Allocator, module: *ModuleInstance) !VM {
+        return .{
+            .allocator = allocator,
+            .module = module,
+            .value_stack = ValueStack.init(allocator),
+            .frame_stack = FrameStack.init(allocator),
+            .label_stack = LabelStack.init(allocator),
+        };
     }
 
     pub fn deinit(self: *VM) void {
-        self.instance.deinit();
+        self.value_stack.deinit();
+        self.frame_stack.deinit();
+        self.label_stack.deinit();
     }
 
     pub fn start(self: *VM) !Result {
-        if (self.instance.start) |st| {
-            var instance = try self.instance.getFunctionInstance(st.function_index);
-
-            return try self.invoke(instance);
-        }
-
-        return error.StartSectionNotFound;
+        const function = try self.module.getStartFunction();
+        return try self.invoke(function);
     }
 
     pub fn call(self: *VM, name: []const u8) !Result {
-        const instance = try self.instance.findFunctionInstance(name);
-
-        return try self.invoke(instance);
+        const function = try self.module.findFunction(name);
+        return try self.invoke(function);
     }
 
-    fn invoke(self: *VM, instance: FunctionInstance) !Result {
-        var ctx = Context.init(self.allocator);
-        defer ctx.deinit();
+    fn invoke(self: *VM, function: *FunctionInstance) !Result {
+        try self.initFunction(function);
 
-        try self.initFunction(&ctx, instance);
+        var label = try self.label_stack.peek();
+        var frame = try self.frame_stack.peek();
 
-        var stack = &ctx.stack;
-        var label = try stack.currentLabel();
-        var frame = try stack.currentFrame();
-        var instructions = label.instructions;
-
-        loop: while (try instructions.next()) |instruction| {
+        loop: while (frame.code_reader.next()) |instruction| {
             //std.debug.print("OP: {s}\n", .{@tagName(instruction)});
 
             switch (instruction) {
                 .@"end" => {
-                    try self.finalizeFunction(&ctx);
-                    label = stack.currentLabel() catch |err| {
-                        if (err == error.LabelNotFound) {
+                    try self.finalizeFunction();
+                    label = self.label_stack.peek() catch |err| {
+                        if (err == error.StackUnderflow) {
                             break :loop;
                         }
                         return err;
                     };
-                    frame = try stack.currentFrame();
-                    instructions = label.instructions;
+                    frame = try self.frame_stack.peek();
                 },
                 .@"return" => {
-                    try self.finalizeFunction(&ctx);
-                    label = stack.currentLabel() catch |err| {
-                        if (err == error.LabelNotFound) {
+                    try self.finalizeFunction();
+                    label = self.label_stack.peek() catch |err| {
+                        if (err == error.StackUnderflow) {
                             break :loop;
                         }
                         return err;
                     };
-                    frame = try stack.currentFrame();
-                    instructions = label.instructions;
+                    frame = try self.frame_stack.peek();
                 },
                 .@"call" => |idx| {
-                    const funcInstance = try frame.instance.getFunctionInstance(idx);
-                    try self.initFunction(&ctx, funcInstance);
-                    label = try stack.currentLabel();
-                    frame = try stack.currentFrame();
-                    instructions = label.instructions;
+                    const func = try frame.module.getFunction(idx);
+                    try self.initFunction(func);
+                    label = try self.label_stack.peek();
+                    frame = try self.frame_stack.peek();
                 },
-                .@"drop" => _ = try ctx.stack.popValue(),
+                .@"drop" => _ = try self.value_stack.pop(),
                 .@"local.get" => |idx| {
                     const value = try frame.getLocal(idx);
-                    try stack.pushValue(value);
+                    try self.value_stack.push(value);
                 },
-                .@"local.set" => |idx| try self.push(&ctx, frame, idx),
+                .@"local.set" => |idx| try self.push(frame, idx),
                 .@"local.tee" => |idx| {
-                    const value = try stack.popValue();
-                    try stack.pushValue(value);
-                    try stack.pushValue(value);
+                    const value = try self.value_stack.pop();
+                    try self.value_stack.push(value);
+                    try self.value_stack.push(value);
 
-                    try self.push(&ctx, frame, idx);
+                    try self.push(frame, idx);
                 },
-                .@"i32.const" => |v| try ctx.stack.pushValue(.{ .i32 = v }),
+                .@"i32.const" => |v| try self.value_stack.push(.{ .i32 = v }),
                 .@"i32.eqz" => {
-                    const c = try stack.popValue();
+                    const c = try self.value_stack.pop();
                     if (c != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c.i32 == 0),
                     });
                 },
                 .@"i32.eq" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 == c2.i32),
                     });
                 },
                 .@"i32.ne" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 != c2.i32),
                     });
                 },
                 .@"i32.lt_s" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 < c2.i32),
                     });
                 },
                 .@"i32.gt_s" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 > c2.i32),
                     });
                 },
                 .@"i32.le_s" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 <= c2.i32),
                     });
                 },
                 .@"i32.ge_s" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @boolToInt(c1.i32 >= c2.i32),
                     });
                 },
                 .@"i32.add" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = c1.i32 + c2.i32,
                     });
                 },
                 .@"i32.sub" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = c1.i32 - c2.i32,
                     });
                 },
                 .@"i32.mul" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = c1.i32 * c2.i32,
                     });
                 },
                 .@"i32.div_s" => {
-                    const c2 = try stack.popValue();
+                    const c2 = try self.value_stack.pop();
                     if (c2 != .i32) return error.InvalidStack;
-                    const c1 = try stack.popValue();
+                    const c1 = try self.value_stack.pop();
                     if (c1 != .i32) return error.InvalidStack;
 
                     if (c2.i32 == 0) return error.IntegerDivideByZero;
 
-                    try ctx.stack.pushValue(.{
+                    try self.value_stack.push(.{
                         .i32 = @divTrunc(c1.i32, c2.i32),
                     });
                 },
@@ -230,77 +236,55 @@ pub const VM = struct {
             }
         }
 
-        return try self.popResult(stack, frame);
+        return try self.popResult(frame);
     }
 
-    fn initFunction(self: *VM, ctx: *Context, instance: FunctionInstance) !void {
-        var stack = &ctx.stack;
-
-        const paramLen = instance.function_type.parameter_types.len;
+    fn initFunction(self: *VM, function: *FunctionInstance) !void {
+        const paramLen = function.parameter_types.len;
         var params: []Value = try self.allocator.alloc(Value, paramLen);
-        for (instance.function_type.parameter_types) |typ, i| {
-            const value = try stack.popValue();
+        for (function.parameter_types) |typ, i| {
+            const value = try self.value_stack.pop();
             switch (typ) {
-                .i32 => {
-                    if (value != .i32) {
-                        return error.InvalidStack;
-                    }
-                    params[paramLen - i - 1] = value;
-                },
-                .i64 => {
-                    if (value != .i64) {
-                        return error.InvalidStack;
-                    }
-                    params[paramLen - i - 1] = value;
-                },
-                .f32 => {
-                    if (value != .f32) {
-                        return error.InvalidStack;
-                    }
-                    params[paramLen - i - 1] = value;
-                },
-                .f64 => {
-                    if (value != .f64) {
-                        return error.InvalidStack;
-                    }
-                    params[paramLen - i - 1] = value;
-                },
+                .i32 => if (value != .i32) return error.InvalidStack,
+                .i64 => if (value != .i64) return error.InvalidStack,
+                .f32 => if (value != .f32) return error.InvalidStack,
+                .f64 => if (value != .f64) return error.InvalidStack,
                 else => return error.UnsupportedType,
             }
+            params[paramLen - i - 1] = value;
         }
 
         // label
-        const label = try Label.init(instance.code.instructions);
-        try stack.pushLabel(label);
+        const label = try Label.init();
+        try self.label_stack.push(label);
 
         // frame
-        const frame = try Frame.init(self.allocator, params, instance.code.locals, self.instance, instance);
-        try stack.pushFrame(frame);
+        const frame = try Frame.init(self.allocator, params, self.module, function);
+        try self.frame_stack.push(frame);
     }
 
-    fn finalizeFunction(self: *VM, ctx: *Context) !void {
-        var stack = &ctx.stack;
-        const frame = try stack.currentFrame();
+    fn finalizeFunction(self: *VM) !void {
+        const frame = try self.frame_stack.peek();
 
-        var result = try self.popResult(stack, frame);
+        var result = try self.popResult(frame);
         defer result.deinit();
 
-        _ = try stack.popFrame();
-        _ = try stack.popLabel();
+        _ = try self.frame_stack.pop();
+        _ = try self.label_stack.pop();
 
         for (result.values) |value| {
-            try stack.pushValue(value);
+            try self.value_stack.push(value);
         }
     }
 
-    fn popResult(self: VM, stack: *Stack, frame: Frame) !Result {
-        const instance = frame.functionInstance orelse return error.InvalidStack;
-        const types = instance.function_type.result_types;
+    fn popResult(self: *VM, frame: Frame) !Result {
+        const function = frame.function;
+        const types = function.result_types;
 
         var result = try Result.init(self.allocator, types.len);
 
         for (types) |typ, i| {
-            const value = try stack.popValue();
+            const value = try self.value_stack.pop();
             switch (typ) {
                 .i32 => {
                     if (value != .i32) {
@@ -333,19 +317,12 @@ pub const VM = struct {
         return result;
     }
 
-    fn push(self: VM, ctx: *Context, frame: Frame, idx: u32) !void {
-        _ = self;
-        const value = try ctx.stack.popValue();
+    fn push(self: *VM, frame: Frame, idx: u32) !void {
+        const value = try self.value_stack.pop();
         try frame.setLocal(idx, value);
     }
 };
 
-pub const Value = @import("runtime/stack.zig").Value;
-pub const Label = @import("runtime/stack.zig").Label;
-pub const Frame = @import("runtime/stack.zig").Frame;
-pub const Stack = @import("runtime/stack.zig").Stack;
-
-const TestUnion = union(enum) {
-    a: i32,
-    b: i32,
-};
+test {
+    std.testing.refAllDecls(@This());
+}

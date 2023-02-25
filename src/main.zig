@@ -4,7 +4,9 @@ const mem = std.mem;
 const process = std.process;
 const Allocator = mem.Allocator;
 const build_options = @import("build_options");
+
 const mod = @import("./mod.zig");
+const instance = @import("./instance.zig");
 const runtime = @import("./runtime.zig");
 
 const usage =
@@ -66,9 +68,13 @@ fn runCommand(arena: Allocator, args: []const []const u8) !void {
         fatal("invalid options", .{});
     };
 
-    const m = try loadWasm(name, arena);
+    const module = try loadWasm(name, arena);
 
-    var vm = try runtime.VM.init(arena, m);
+    var mod_instance = instance.ModuleInstance.init(arena, module);
+    defer mod_instance.deinit();
+    try mod_instance.instantiate();
+
+    var vm = try runtime.VM.init(arena, &mod_instance);
     defer vm.deinit();
 
     var ret: runtime.VM.Result = undefined;
@@ -126,7 +132,6 @@ fn dumpCommand(arena: Allocator, args: []const []const u8) !void {
 }
 
 fn loadWasm(name: []const u8, allocator: Allocator) !mod.Module {
-    //const file = try std.fs.openFileAbsolute(name.?, .{});
     const file = try std.fs.cwd().openFile(name, .{});
     defer file.close();
 
@@ -134,5 +139,9 @@ fn loadWasm(name: []const u8, allocator: Allocator) !mod.Module {
 }
 
 test {
-    std.testing.refAllDeclsRecursive(@This());
+    _ = @import("./instance.zig");
+    _ = @import("./instr.zig");
+    _ = @import("./mod.zig");
+    _ = @import("./runtime.zig");
+    _ = @import("./util.zig");
 }
