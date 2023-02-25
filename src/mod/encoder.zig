@@ -251,9 +251,8 @@ pub const WatEncoder = struct {
         try writer.print("(local (;{d};) {s})", .{ index, local });
     }
 
-    fn writeInstructions(self: *WatEncoder, writer: anytype, instructions: instr.Instructions) !void {
-        var instrs = instructions;
-        while (try instrs.next()) |instruction| {
+    fn writeInstructions(self: *WatEncoder, writer: anytype, instructions: *instr.Instructions) !void {
+        while (try instructions.next()) |instruction| {
             if (instruction == .@"end") {
                 break;
             }
@@ -357,13 +356,11 @@ pub const WatEncoder = struct {
         }
     }
 
-    fn writeConstantInstructions(_: *WatEncoder, writer: anytype, instructions: instr.Instructions) !void {
-        var instrs = instructions;
-
+    fn writeConstantInstructions(_: *WatEncoder, writer: anytype, instructions: *instr.Instructions) !void {
         try writer.writeByte('(');
 
         var first = true;
-        while (try instrs.next()) |op| {
+        while (try instructions.next()) |op| {
             if (op == .@"end") {
                 break;
             }
@@ -444,7 +441,9 @@ pub const WatEncoder = struct {
             }
 
             if (!data.mode.passive) {
-                try self.writeConstantInstructions(writer, data.offset);
+                if (data.offset) |offset| {
+                    try self.writeConstantInstructions(writer, offset);
+                }
             }
 
             try writer.writeByte(' ');

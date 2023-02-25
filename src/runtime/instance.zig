@@ -88,7 +88,7 @@ pub const ModuleInstance = struct {
         return exports;
     }
 
-    pub fn findFunctionInstance(self: ModuleInstance, name: []const u8) !*FunctionInstance {
+    pub fn findFunctionInstance(self: ModuleInstance, name: []const u8) !FunctionInstance {
         const exp = try self.findExport(name);
         const idx = switch (exp.value) {
             .function => |f| f,
@@ -98,11 +98,11 @@ pub const ModuleInstance = struct {
         return try self.getFunctionInstance(idx);
     }
 
-    pub fn getFunctionInstance(self: ModuleInstance, idx: u32) !*FunctionInstance {
+    pub fn getFunctionInstance(self: ModuleInstance, idx: u32) !FunctionInstance {
         if (self.functions.len <= idx) {
             return error.FunctionNotFound;
         }
-        return &self.functions[idx];
+        return self.functions[idx];
     }
 
     fn findExport(self: ModuleInstance, name: []const u8) !ExportInstance {

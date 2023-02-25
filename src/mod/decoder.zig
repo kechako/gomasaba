@@ -418,8 +418,9 @@ pub const Decoder = struct {
         };
     }
 
-    fn readConstantInstructions(self: Decoder, reader: anytype, typ: mod.ValueType) !Instructions {
-        var instructions = Instructions.init(self.allocator);
+    fn readConstantInstructions(self: Decoder, reader: anytype, typ: mod.ValueType) !*Instructions {
+        var instructions = try self.allocator.create(Instructions);
+        instructions.* = Instructions.init(self.allocator);
 
         var r = expr.expressionReader(reader);
         {
@@ -624,8 +625,9 @@ pub const Decoder = struct {
         return locals;
     }
 
-    fn readInstructions(self: Decoder, reader: anytype) !Instructions {
-        var instructions = Instructions.init(self.allocator);
+    fn readInstructions(self: Decoder, reader: anytype) !*Instructions {
+        var instructions = try self.allocator.create(Instructions);
+        instructions.* = Instructions.init(self.allocator);
 
         var r = expr.expressionReader(reader);
         while (try r.next()) |op| {
@@ -715,10 +717,8 @@ pub const Decoder = struct {
             memory_index = try self.readUnsigned(u32, reader);
         }
 
-        var offset: Instructions = undefined;
-        if (mode.passive) {
-            offset = Instructions.init(self.allocator);
-        } else {
+        var offset: ?*Instructions = null;
+        if (!mode.passive) {
             offset = try self.readConstantInstructions(reader, mod.ValueType.i32);
         }
 

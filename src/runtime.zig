@@ -55,7 +55,7 @@ pub const VM = struct {
         return try self.invoke(instance);
     }
 
-    fn invoke(self: *VM, instance: *FunctionInstance) !Result {
+    fn invoke(self: *VM, instance: FunctionInstance) !Result {
         var ctx = Context.init(self.allocator);
         defer ctx.deinit();
 
@@ -233,7 +233,7 @@ pub const VM = struct {
         return try self.popResult(stack, frame);
     }
 
-    fn initFunction(self: *VM, ctx: *Context, instance: *FunctionInstance) !void {
+    fn initFunction(self: *VM, ctx: *Context, instance: FunctionInstance) !void {
         var stack = &ctx.stack;
 
         const paramLen = instance.function_type.parameter_types.len;
@@ -270,7 +270,7 @@ pub const VM = struct {
         }
 
         // label
-        const label = try Label.init(&instance.code.instructions);
+        const label = try Label.init(instance.code.instructions);
         try stack.pushLabel(label);
 
         // frame

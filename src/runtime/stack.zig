@@ -254,9 +254,9 @@ pub const Frame = struct {
     allocator: Allocator,
     locals: []Value,
     instance: ModuleInstance,
-    functionInstance: ?*FunctionInstance,
+    functionInstance: ?FunctionInstance,
 
-    pub fn init(allocator: Allocator, params: []const Value, locals: mod.Locals, instance: ModuleInstance, functionInstance: ?*FunctionInstance) !Frame {
+    pub fn init(allocator: Allocator, params: []const Value, locals: mod.Locals, instance: ModuleInstance, functionInstance: ?FunctionInstance) !Frame {
         return .{
             .allocator = allocator,
             .locals = try initLocals(allocator, params, locals),
