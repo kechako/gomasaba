@@ -229,9 +229,14 @@ pub const WatEncoder = struct {
 
             self.increaseIndent();
 
-            for (code.locals) |local, ii| {
-                try self.writeIndent(writer);
-                try self.writeLocal(writer, local, ii);
+            var localIdx: usize = 0;
+            for (code.locals) |local| {
+                var c: usize = 0;
+                while (c < local.count) : (c += 1) {
+                    try self.writeIndent(writer);
+                    try self.writeLocal(writer, local.value_type, localIdx);
+                    localIdx += 1;
+                }
             }
 
             try self.writeExpressions(writer, code.expressions);

@@ -524,7 +524,23 @@ pub const Decoder = struct {
     }
 
     fn readLocals(self: Decoder, reader: anytype) !mod.Locals {
-        return try self.readValueTypes(reader);
+        const size = try self.readUnsigned(u32, reader);
+
+        const locals = try self.allocator.alloc(mod.Local, size);
+        for (locals) |*l| {
+            l.* = try self.readLocal(reader);
+        }
+
+        return locals;
+    }
+
+    fn readLocal(self: Decoder, reader: anytype) !mod.Local {
+        const count = try self.readUnsigned(u32, reader);
+        const value_type = try self.readValueType(reader);
+        return .{
+            .count = count,
+            .value_type = value_type,
+        };
     }
 
     fn readDataSection(self: Decoder, reader: anytype) !mod.DataSection {

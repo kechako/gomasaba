@@ -281,20 +281,27 @@ pub const Frame = struct {
     }
 
     fn initLocals(allocator: Allocator, params: []const Value, locals: mod.Locals) ![]Value {
-        var values = try allocator.alloc(Value, params.len + locals.len);
+        var len = params.len;
+        for (locals) |l| {
+            len += l.count;
+        }
+        var values = try allocator.alloc(Value, len);
         var i: usize = 0;
         for (params) |param| {
             values[i] = param;
             i += 1;
         }
         for (locals) |local| {
-            values[i] = switch (local) {
-                .i32 => .{ .i32 = 0 },
-                .i64 => .{ .i64 = 0 },
-                .f32 => .{ .f32 = 0 },
-                .f64 => .{ .f64 = 0 },
-                else => return error.UnsupportedType,
-            };
+            var c: usize = 0;
+            while (c < local.count) : (c += 1) {
+                values[i] = switch (local.value_type) {
+                    .i32 => .{ .i32 = 0 },
+                    .i64 => .{ .i64 = 0 },
+                    .f32 => .{ .f32 = 0 },
+                    .f64 => .{ .f64 = 0 },
+                    else => return error.UnsupportedType,
+                };
+            }
             i += 1;
         }
         return values;
@@ -303,15 +310,17 @@ pub const Frame = struct {
     pub fn getLocal(self: Frame, idx: u32) !Value {
         if (idx < self.locals.len) {
             return self.locals[idx];
+        } else {
+            return error.OutOfRange;
         }
-        return error.OutOfRange;
     }
 
     pub fn setLocal(self: Frame, idx: u32, value: Value) !void {
         if (idx < self.locals.len) {
             self.locals[idx] = value;
+        } else {
+            return error.OutOfRange;
         }
-        return error.OutOfRange;
     }
 };
 

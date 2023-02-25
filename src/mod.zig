@@ -398,7 +398,12 @@ pub const Code = struct {
     expressions: []u8,
 };
 
-pub const Locals = []ValueType;
+pub const Locals = []Local;
+
+pub const Local = struct {
+    count: u32,
+    value_type: ValueType,
+};
 
 pub const DataSection = struct {
     datas: []Data,
