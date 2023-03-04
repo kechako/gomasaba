@@ -1,15 +1,19 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 const mod = @import("../mod.zig");
 const instr = @import("../instr.zig");
+const util = @import("../util.zig");
 
 pub const WatEncoder = struct {
+    allocator: Allocator,
     indent: usize,
     type_index: usize,
     func_index: usize,
 
-    pub fn init() WatEncoder {
+    pub fn init(allocator: Allocator) WatEncoder {
         return .{
+            .allocator = allocator,
             .indent = 0,
             .type_index = 0,
             .func_index = 0,
@@ -239,11 +243,7 @@ pub const WatEncoder = struct {
                 }
             }
 
-            try self.writeCode(writer, code.code);
-
-            self.decreaseIndent();
-
-            try writer.writeAll(")");
+            try self.writeCode(writer, code.code, func_types);
         }
     }
 
@@ -251,17 +251,58 @@ pub const WatEncoder = struct {
         try writer.print("(local (;{d};) {s})", .{ index, local });
     }
 
-    fn writeCode(self: *WatEncoder, writer: anytype, code: instr.Code) !void {
+    fn writeCode(self: *WatEncoder, writer: anytype, code: instr.Code, func_types: []const mod.FunctionType) !void {
         var reader = instr.CodeReader.init(code);
 
+        var instrStack = util.Stack(instr.Instruction).init(self.allocator);
+        defer instrStack.deinit();
+
+        var scope: usize = 1;
+
         while (reader.next()) |instruction| {
-            if (instruction == .@"end") {
+            if (scope == 0) {
                 break;
             }
 
-            try self.writeIndent(writer);
+            if (instruction != .@"end" and instruction != .@"else") {
+                try self.writeIndent(writer);
+            }
 
             switch (instruction) {
+                .@"if" => |b| {
+                    try writer.writeAll("(if");
+                    self.increaseIndent();
+
+                    try self.writeBlockType(writer, b.block_type, func_types);
+
+                    try self.writeIndent(writer);
+                    try writer.writeAll("(then");
+                    self.increaseIndent();
+
+                    try instrStack.push(instruction);
+                    scope += 1;
+                },
+                .@"else" => {
+                    try writer.writeByte(')');
+                    self.decreaseIndent();
+
+                    try self.writeIndent(writer);
+                    try writer.writeAll("(else");
+                    self.increaseIndent();
+                },
+                .@"end" => {
+                    scope -= 1;
+                    const pushedInstr = instrStack.tryPop();
+
+                    if (pushedInstr) |i| {
+                        if (i == .@"if") {
+                            try writer.writeByte(')');
+                            self.decreaseIndent();
+                        }
+                    }
+                    try writer.writeByte(')');
+                    self.decreaseIndent();
+                },
                 .@"return" => try writer.writeAll("return"),
                 .@"call" => |idx| try writer.print("call {d}", .{idx}),
                 .@"drop" => try writer.writeAll("drop"),
@@ -288,6 +329,29 @@ pub const WatEncoder = struct {
         }
     }
 
+    fn writeBlockType(self: *WatEncoder, writer: anytype, block_type: mod.BlockType, func_types: []const mod.FunctionType) !void {
+        switch (block_type) {
+            .empty => {},
+            .value_type => |value_type| {
+                try self.writeIndent(writer);
+                try writer.print("(result {s})", .{value_type});
+            },
+            .type_index => |idx| {
+                if (idx < 0 or idx >= func_types.len) {
+                    return error.InvalidTypeIndex;
+                }
+                const func_type = func_types[@intCast(usize, idx)];
+                for (func_type.parameter_types) |value_type| {
+                    try self.writeIndent(writer);
+                    try writer.print("(param {s})", .{value_type});
+                }
+                for (func_type.result_types) |value_type| {
+                    try self.writeIndent(writer);
+                    try writer.print("(result {s})", .{value_type});
+                }
+            },
+        }
+    }
     fn writeTableSection(self: *WatEncoder, writer: anytype, sec: mod.TableSection) !void {
         for (sec.tables) |table, i| {
             try self.writeIndent(writer);

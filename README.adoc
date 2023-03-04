@@ -103,6 +103,8 @@ gomasaba dump path/to/wasm.wasm
 
 == サポートする命令
 
+- if
+- else
 - end
 - return
 - call

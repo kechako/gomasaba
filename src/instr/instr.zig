@@ -2,6 +2,9 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
+const mod = @import("../mod.zig");
+const BlockType = mod.BlockType;
+
 pub const Opecode = enum(u8) {
     Prefix = 0xfc,
 
@@ -12,7 +15,6 @@ pub const Opecode = enum(u8) {
     @"loop" = 0x03,
     @"if" = 0x04,
     @"else" = 0x05,
-    @"if_no_else" = 0x06,
     @"end" = 0x0b,
     @"br" = 0x0c,
     @"br_if" = 0x0d,
@@ -230,7 +232,6 @@ pub const Opecode = enum(u8) {
             .@"loop",
             .@"if",
             .@"else",
-            .@"if_no_else",
             .@"end",
             .@"br",
             .@"br_if",
@@ -448,11 +449,11 @@ pub const Instruction = union(Opecode) {
     @"block": void, // not implemented
     @"loop": void, // not implemented
     @"if": struct {
-        param_arity: u32,
-        return_arity: u32,
+        block_type: BlockType,
+        branch_target: u32,
+        else_pointer: u32,
     },
-    @"else": void, // not implemented
-    @"if_no_else": void, // not implemented
+    @"else": void,
     @"end": void,
     @"br": void, // not implemented
     @"br_if": void, // not implemented

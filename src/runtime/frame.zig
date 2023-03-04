@@ -8,6 +8,8 @@ const util = @import("../util.zig");
 
 const ModuleInstance = instance.ModuleInstance;
 const FunctionInstance = instance.FunctionInstance;
+const Label = runtime.Label;
+const LabelStack = runtime.LabelStack;
 const Value = runtime.Value;
 const CodeReader = instr.CodeReader;
 
@@ -18,6 +20,8 @@ pub const Frame = struct {
     function: *FunctionInstance,
     code_reader: *CodeReader,
 
+    label_stack: LabelStack,
+
     pub fn init(allocator: Allocator, params: []const Value, mod: *ModuleInstance, function: *FunctionInstance) !Frame {
         var reader = try allocator.create(CodeReader);
         reader.* = CodeReader.init(function.code);
@@ -27,12 +31,14 @@ pub const Frame = struct {
             .module = mod,
             .function = function,
             .code_reader = reader,
+            .label_stack = LabelStack.init(allocator),
         };
     }
 
     pub fn deinit(self: *Frame) void {
         self.allocator.free(self.locals);
         self.allocator.free(self.code_reader);
+        self.label_stack.deinit();
     }
 
     fn initLocals(allocator: Allocator, params: []const Value, function: ?*FunctionInstance) ![]Value {
@@ -82,6 +88,22 @@ pub const Frame = struct {
         } else {
             return error.OutOfRange;
         }
+    }
+
+    pub fn pushLabel(self: *Frame, label: Label) !void {
+        try self.label_stack.push(label);
+    }
+
+    pub fn popLabel(self: *Frame) !Label {
+        return try self.label_stack.pop();
+    }
+
+    pub fn tryPopLabel(self: *Frame) ?Label {
+        return self.label_stack.tryPop();
+    }
+
+    pub fn peekLabel(self: *Frame) !Label {
+        return try self.label_stack.peek();
     }
 };
 

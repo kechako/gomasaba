@@ -13,6 +13,7 @@ const Code = instr.Code;
 pub const ModuleInstance = struct {
     allocator: Allocator,
     module: Module,
+    types: ?[]TypeInstance,
     functions: ?[]FunctionInstance,
     start: ?StartInstance,
     exports: ?[]ExportInstance,
@@ -21,6 +22,7 @@ pub const ModuleInstance = struct {
         return .{
             .allocator = allocator,
             .module = module,
+            .types = null,
             .functions = null,
             .start = null,
             .exports = null,
@@ -37,9 +39,25 @@ pub const ModuleInstance = struct {
     }
 
     pub fn instantiate(self: *ModuleInstance) !void {
+        self.types = try self.instantiateTypes();
         self.functions = try self.instantiateFunctions();
         self.start = self.instantiateStart();
         self.exports = try self.instantiateExports();
+    }
+
+    fn instantiateTypes(self: *ModuleInstance) !?[]TypeInstance {
+        const module = self.module;
+        const type_sec = module.type_section orelse return null;
+
+        var types = try self.allocator.alloc(TypeInstance, type_sec.function_types.len);
+        for (type_sec.function_types) |func_type, i| {
+            types[i] = .{
+                .parameter_types = func_type.parameter_types,
+                .result_types = func_type.result_types,
+            };
+        }
+
+        return types;
     }
 
     fn instantiateFunctions(self: *ModuleInstance) !?[]FunctionInstance {
@@ -107,6 +125,14 @@ pub const ModuleInstance = struct {
         return exports;
     }
 
+    pub fn getType(self: *ModuleInstance, idx: u32) !*TypeInstance {
+        const types = self.types orelse return error.TypeNotFound;
+        if (idx < types.len) {
+            return &types[idx];
+        }
+        return error.TypeNotFound;
+    }
+
     pub fn findFunction(self: *ModuleInstance, name: []const u8) !*FunctionInstance {
         const exp = self.getExport(name) catch |err| {
             if (err == error.ExportNotFound) {
@@ -147,6 +173,11 @@ pub const ModuleInstance = struct {
         }
         return error.ExportNotFound;
     }
+};
+
+pub const TypeInstance = struct {
+    parameter_types: []const ValueType,
+    result_types: []const ValueType,
 };
 
 pub const FunctionInstance = struct {

@@ -24,7 +24,6 @@ pub const VM = struct {
 
     value_stack: ValueStack,
     frame_stack: FrameStack,
-    label_stack: LabelStack,
 
     pub const Result = struct {
         allocator: Allocator,
@@ -49,14 +48,12 @@ pub const VM = struct {
             .module = module,
             .value_stack = ValueStack.init(allocator),
             .frame_stack = FrameStack.init(allocator),
-            .label_stack = LabelStack.init(allocator),
         };
     }
 
     pub fn deinit(self: *VM) void {
         self.value_stack.deinit();
         self.frame_stack.deinit();
-        self.label_stack.deinit();
     }
 
     pub fn start(self: *VM) !Result {
@@ -70,40 +67,89 @@ pub const VM = struct {
     }
 
     fn invoke(self: *VM, function: *FunctionInstance) !Result {
-        try self.initFunction(function);
-
-        var label = try self.label_stack.peek();
-        var frame = try self.frame_stack.peek();
+        var frame = try self.initFunction(function);
 
         loop: while (frame.code_reader.next()) |instruction| {
             //std.debug.print("OP: {s}\n", .{@tagName(instruction)});
 
             switch (instruction) {
-                .@"end" => {
-                    try self.finalizeFunction();
-                    label = self.label_stack.peek() catch |err| {
-                        if (err == error.StackUnderflow) {
-                            break :loop;
+                .@"if" => |b| {
+                    const c = try self.value_stack.pop();
+                    if (c != .i32) {
+                        return error.InvalidValueStack;
+                    }
+
+                    var result_types: []const mod.ValueType = &[_]mod.ValueType{};
+                    switch (b.block_type) {
+                        .empty => {},
+                        .value_type => |v| {
+                            result_types = &[_]mod.ValueType{v};
+                        },
+                        .type_index => |idx| {
+                            const typ = try frame.module.getType(@intCast(u32, idx));
+                            const arity = typ.parameter_types.len;
+                            for (typ.parameter_types) |value_type, i| {
+                                const v = try self.value_stack.peekDepth(arity - i - 1);
+                                const valid = switch (value_type) {
+                                    .i32 => v == .i32,
+                                    .i64 => v == .i64,
+                                    .f32 => v == .f32,
+                                    .f64 => v == .f64,
+                                    else => return error.UnexpectedValueType,
+                                };
+                                if (!valid) {
+                                    return error.InvalidValueStack;
+                                }
+                            }
+                            result_types = typ.result_types;
+                        },
+                    }
+
+                    const label = try Label.init(instruction, result_types);
+                    try frame.pushLabel(label);
+
+                    if (c.i32 == 0) {
+                        // false
+                        if (b.else_pointer > 0) {
+                            try frame.code_reader.setPointer(b.else_pointer);
+                        } else {
+                            try frame.code_reader.setPointer(b.branch_target);
                         }
-                        return err;
-                    };
-                    frame = try self.frame_stack.peek();
+                    } else {
+                        // true
+                    }
+                },
+                .@"else" => {
+                    const label = try frame.peekLabel();
+
+                    try frame.code_reader.setPointer(label.branch_target);
+                },
+                .@"end" => {
+                    if (frame.tryPopLabel()) |label| {
+                        const arity = label.result_types.len;
+                        for (label.result_types) |value_type, i| {
+                            const v = try self.value_stack.peekDepth(arity - i - 1);
+                            const valid = switch (value_type) {
+                                .i32 => v == .i32,
+                                .i64 => v == .i64,
+                                .f32 => v == .f32,
+                                .f64 => v == .f64,
+                                else => return error.UnexpectedValueType,
+                            };
+                            if (!valid) {
+                                return error.InvalidValueStack;
+                            }
+                        }
+                    } else {
+                        frame = try self.finalizeFunction() orelse break :loop;
+                    }
                 },
                 .@"return" => {
-                    try self.finalizeFunction();
-                    label = self.label_stack.peek() catch |err| {
-                        if (err == error.StackUnderflow) {
-                            break :loop;
-                        }
-                        return err;
-                    };
-                    frame = try self.frame_stack.peek();
+                    frame = try self.finalizeFunction() orelse break :loop;
                 },
                 .@"call" => |idx| {
                     const func = try frame.module.getFunction(idx);
-                    try self.initFunction(func);
-                    label = try self.label_stack.peek();
-                    frame = try self.frame_stack.peek();
+                    frame = try self.initFunction(func);
                 },
                 .@"drop" => _ = try self.value_stack.pop(),
                 .@"local.get" => |idx| {
@@ -239,7 +285,7 @@ pub const VM = struct {
         return try self.popResult(frame);
     }
 
-    fn initFunction(self: *VM, function: *FunctionInstance) !void {
+    fn initFunction(self: *VM, function: *FunctionInstance) !Frame {
         const paramLen = function.parameter_types.len;
         var params: []Value = try self.allocator.alloc(Value, paramLen);
         for (function.parameter_types) |typ, i| {
@@ -254,27 +300,26 @@ pub const VM = struct {
             params[paramLen - i - 1] = value;
         }
 
-        // label
-        const label = try Label.init();
-        try self.label_stack.push(label);
-
         // frame
         const frame = try Frame.init(self.allocator, params, self.module, function);
         try self.frame_stack.push(frame);
+
+        return frame;
     }
 
-    fn finalizeFunction(self: *VM) !void {
+    fn finalizeFunction(self: *VM) !?Frame {
         const frame = try self.frame_stack.peek();
 
         var result = try self.popResult(frame);
         defer result.deinit();
 
         _ = try self.frame_stack.pop();
-        _ = try self.label_stack.pop();
 
         for (result.values) |value| {
             try self.value_stack.push(value);
         }
+
+        return self.frame_stack.tryPeek();
     }
 
     fn popResult(self: *VM, frame: Frame) !Result {

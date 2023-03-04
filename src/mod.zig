@@ -147,15 +147,12 @@ pub const ValueType = enum(i8) {
     funcref = -0x10,
     externref = -0x11,
 
-    // Type Indices
-    block = 0x40,
-
     _,
 
     pub fn fromInt(n: i8) !ValueType {
         const v = @intToEnum(ValueType, n);
         return switch (v) {
-            .i32, .i64, .f32, .f64, .v128, .funcref, .externref, .block => v,
+            .i32, .i64, .f32, .f64, .v128, .funcref, .externref => v,
             _ => error.InvalidValueType,
         };
     }
@@ -176,7 +173,6 @@ pub const ValueType = enum(i8) {
             .v128 => "v128",
             .funcref => "funcref",
             .externref => "externref",
-            .block => "block",
             else => "(unknown)",
         };
 
@@ -219,9 +215,6 @@ test "mod.ValueType.fromInt()" {
     try expectEqual(ValueType.funcref, try ValueType.fromInt(@as(i8, -0x10)));
     try expectEqual(ValueType.externref, try ValueType.fromInt(@as(i8, -0x11)));
 
-    // block type
-    try expectEqual(ValueType.block, try ValueType.fromInt(@as(i8, 0x40)));
-
     // invalid value
     try expectError(error.InvalidValueType, ValueType.fromInt(@as(i8, 0x00)));
 }
@@ -254,11 +247,13 @@ test "mod.ValueType.format()" {
     const externref_string = try std.fmt.allocPrint(test_allocator, "{s}", .{ValueType.externref});
     defer test_allocator.free(externref_string);
     try expectEqualStrings("externref", externref_string);
-
-    const block_string = try std.fmt.allocPrint(test_allocator, "{s}", .{ValueType.block});
-    defer test_allocator.free(block_string);
-    try expectEqualStrings("block", block_string);
 }
+
+pub const BlockType = union(enum) {
+    empty: void,
+    value_type: ValueType,
+    type_index: i33,
+};
 
 pub const ImportSection = struct {
     imports: []const Import,

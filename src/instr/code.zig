@@ -6,9 +6,13 @@ const Allocator = std.mem.Allocator;
 const util = @import("../util.zig");
 const leb128 = util.leb128;
 const instr = @import("../instr.zig");
+const mod = @import("../mod.zig");
 
+const Stack = util.Stack;
 const Opecode = instr.Opecode;
 const Instruction = instr.Instruction;
+const ValueType = mod.ValueType;
+const BlockType = mod.BlockType;
 
 pub const Code = []const Instruction;
 
@@ -16,7 +20,9 @@ pub fn CodeParser(comptime ReaderType: type) type {
     return struct {
         reader: ReaderType,
         parsed_code: ArrayList(Instruction),
+        code_pointer: usize,
         scope: usize,
+        continuationStack: Stack(usize),
 
         const Self = @This();
 
@@ -24,7 +30,9 @@ pub fn CodeParser(comptime ReaderType: type) type {
             return .{
                 .reader = reader,
                 .parsed_code = ArrayList(Instruction).init(allocator),
-                .scope = 0,
+                .code_pointer = 0,
+                .scope = 1,
+                .continuationStack = Stack(usize).init(allocator),
             };
         }
 
@@ -33,24 +41,82 @@ pub fn CodeParser(comptime ReaderType: type) type {
         }
 
         pub fn parse(self: *Self) !Code {
-            while (true) {
-                const inst = try self.readInstruction();
+            while (try self.readInstruction()) |inst| {
                 try self.pushInstruction(inst);
-                if (inst == .@"end" and self.scope == 0) {
-                    break;
-                }
             }
 
             return self.parsed_code.toOwnedSlice();
         }
 
-        fn readInstruction(self: *Self) !Instruction {
+        fn readInstruction(self: *Self) !?Instruction {
+            defer self.code_pointer += 1;
+
+            if (self.scope == 0) {
+                return null;
+            }
+
             const op = try self.readOpecode();
             //std.debug.print("OP: {s}\n", .{@tagName(op)});
 
             var inst: Instruction = undefined;
             switch (op) {
+                .@"if" => {
+                    const n = try self.readSigned(i33);
+
+                    var block_type: BlockType = undefined;
+                    if (n >= 0) {
+                        block_type = .{
+                            .type_index = n,
+                        };
+                    } else {
+                        if (n == -0x40) {
+                            block_type = BlockType.empty;
+                        } else {
+                            const value_type = try ValueType.fromInt(std.math.cast(i8, n) orelse return error.InvalidValueType);
+                            block_type = .{
+                                .value_type = value_type,
+                            };
+                        }
+                    }
+
+                    try self.continuationStack.push(self.code_pointer);
+                    self.scope += 1;
+
+                    inst = .{
+                        .@"if" = .{
+                            .block_type = block_type,
+                            .branch_target = 0,
+                            .else_pointer = 0,
+                        },
+                    };
+                },
+                .@"else" => {
+                    const pointer = try self.continuationStack.peek();
+
+                    switch (self.parsed_code.items[pointer]) {
+                        .@"if" => |*b| {
+                            b.*.branch_target = 0;
+                            b.*.else_pointer = @intCast(u32, self.code_pointer + 1);
+                        },
+                        else => return error.UnexpectedInstruction,
+                    }
+
+                    inst = Instruction.@"else";
+                },
                 .@"end" => {
+                    self.scope -= 1;
+
+                    if (self.scope != 0) {
+                        const pointer = try self.continuationStack.pop();
+
+                        switch (self.parsed_code.items[pointer]) {
+                            .@"if" => |*b| {
+                                b.*.branch_target = @intCast(u32, self.code_pointer + 1);
+                            },
+                            else => return error.UnexpectedInstruction,
+                        }
+                    }
+
                     inst = Instruction.@"end";
                 },
                 .@"return" => inst = Instruction.@"return",

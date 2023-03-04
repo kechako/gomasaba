@@ -127,7 +127,7 @@ fn dumpCommand(arena: Allocator, args: []const []const u8) !void {
 
     const stdout = std.io.getStdOut();
 
-    var enc = mod.WatEncoder.init();
+    var enc = mod.WatEncoder.init(arena);
     try enc.encode(stdout.writer(), m);
 }
 

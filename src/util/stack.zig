@@ -18,27 +18,43 @@ pub fn Stack(comptime T: type) type {
             self.stack.deinit();
         }
 
+        pub fn isEmpty(self: *Self) bool {
+            return self.stack.items.len == 0;
+        }
+
         pub fn push(self: *Self, v: T) !void {
             try self.stack.append(v);
         }
 
-        pub fn pop(self: *Self) !T {
+        pub fn tryPop(self: *Self) ?T {
             if (self.stack.items.len > 0) {
                 return self.stack.pop();
             }
-            return error.StackUnderflow;
+            return null;
         }
 
-        pub fn peek(self: *Self) !T {
-            return try self.peekDepth(0);
+        pub fn pop(self: *Self) !T {
+            return self.tryPop() orelse error.StackUnderflow;
         }
 
-        pub fn peekDepth(self: *Self, depth: usize) !T {
+        pub fn tryPeek(self: *Self) ?T {
+            return self.tryPeekDepth(0);
+        }
+
+        pub fn tryPeekDepth(self: *Self, depth: usize) ?T {
             const len = self.stack.items.len;
             if (len > depth) {
                 return self.stack.items[len - 1 - depth];
             }
-            return error.StackUnderflow;
+            return null;
+        }
+
+        pub fn peek(self: *Self) !T {
+            return self.tryPeek() orelse error.StackUnderflow;
+        }
+
+        pub fn peekDepth(self: *Self, depth: usize) !T {
+            return self.tryPeekDepth(depth) orelse error.StackUnderflow;
         }
     };
 }
