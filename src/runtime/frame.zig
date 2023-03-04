@@ -90,6 +90,10 @@ pub const Frame = struct {
         }
     }
 
+    pub fn labelStackSize(self: *Frame) usize {
+        return self.label_stack.size();
+    }
+
     pub fn pushLabel(self: *Frame, label: Label) !void {
         try self.label_stack.push(label);
     }
@@ -104,6 +108,18 @@ pub const Frame = struct {
 
     pub fn peekLabel(self: *Frame) !Label {
         return try self.label_stack.peek();
+    }
+
+    pub fn peekLabelDepth(self: *Frame, depth: usize) !Label {
+        return try self.label_stack.peekDepth(depth);
+    }
+
+    pub fn tryPeekLabel(self: *Frame) ?Label {
+        return self.label_stack.tryPeek();
+    }
+
+    pub fn tryPeekLabelDepth(self: *Frame, depth: usize) ?Label {
+        return self.label_stack.tryPeekDepth(depth);
     }
 };
 

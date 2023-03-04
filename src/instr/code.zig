@@ -60,6 +60,64 @@ pub fn CodeParser(comptime ReaderType: type) type {
 
             var inst: Instruction = undefined;
             switch (op) {
+                .@"block" => {
+                    const n = try self.readSigned(i33);
+
+                    var block_type: BlockType = undefined;
+                    if (n >= 0) {
+                        block_type = .{
+                            .type_index = n,
+                        };
+                    } else {
+                        if (n == -0x40) {
+                            block_type = BlockType.empty;
+                        } else {
+                            const value_type = try ValueType.fromInt(std.math.cast(i8, n) orelse return error.InvalidValueType);
+                            block_type = .{
+                                .value_type = value_type,
+                            };
+                        }
+                    }
+
+                    try self.continuationStack.push(self.code_pointer);
+                    self.scope += 1;
+
+                    inst = .{
+                        .@"block" = .{
+                            .block_type = block_type,
+                            .branch_target = 0,
+                        },
+                    };
+                },
+                .@"loop" => {
+                    const n = try self.readSigned(i33);
+
+                    var block_type: BlockType = undefined;
+                    if (n >= 0) {
+                        block_type = .{
+                            .type_index = n,
+                        };
+                    } else {
+                        if (n == -0x40) {
+                            block_type = BlockType.empty;
+                        } else {
+                            const value_type = try ValueType.fromInt(std.math.cast(i8, n) orelse return error.InvalidValueType);
+                            block_type = .{
+                                .value_type = value_type,
+                            };
+                        }
+                    }
+
+                    try self.continuationStack.push(self.code_pointer);
+                    self.scope += 1;
+
+                    inst = .{
+                        .@"loop" = .{
+                            .block_type = block_type,
+                            .branch_target = @intCast(u32, self.code_pointer),
+                        },
+                    };
+                },
                 .@"if" => {
                     const n = try self.readSigned(i33);
 
@@ -110,6 +168,10 @@ pub fn CodeParser(comptime ReaderType: type) type {
                         const pointer = try self.continuationStack.pop();
 
                         switch (self.parsed_code.items[pointer]) {
+                            .@"block" => |*b| {
+                                b.*.branch_target = @intCast(u32, self.code_pointer + 1);
+                            },
+                            .@"loop" => {},
                             .@"if" => |*b| {
                                 b.*.branch_target = @intCast(u32, self.code_pointer + 1);
                             },
@@ -118,6 +180,14 @@ pub fn CodeParser(comptime ReaderType: type) type {
                     }
 
                     inst = Instruction.@"end";
+                },
+                .@"br" => {
+                    const idx = try self.readUnsigned(u32);
+                    inst = .{ .@"br" = idx };
+                },
+                .@"br_if" => {
+                    const idx = try self.readUnsigned(u32);
+                    inst = .{ .@"br_if" = idx };
                 },
                 .@"return" => inst = Instruction.@"return",
                 .@"call" => {

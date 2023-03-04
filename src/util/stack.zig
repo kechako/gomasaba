@@ -18,6 +18,10 @@ pub fn Stack(comptime T: type) type {
             self.stack.deinit();
         }
 
+        pub fn size(self: *Self) usize {
+            return self.stack.items.len;
+        }
+
         pub fn isEmpty(self: *Self) bool {
             return self.stack.items.len == 0;
         }

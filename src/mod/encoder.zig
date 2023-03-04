@@ -269,6 +269,24 @@ pub const WatEncoder = struct {
             }
 
             switch (instruction) {
+                .@"block" => |b| {
+                    try writer.writeAll("(block");
+                    self.increaseIndent();
+
+                    try self.writeBlockType(writer, b.block_type, func_types);
+
+                    try instrStack.push(instruction);
+                    scope += 1;
+                },
+                .@"loop" => |b| {
+                    try writer.writeAll("(loop");
+                    self.increaseIndent();
+
+                    try self.writeBlockType(writer, b.block_type, func_types);
+
+                    try instrStack.push(instruction);
+                    scope += 1;
+                },
                 .@"if" => |b| {
                     try writer.writeAll("(if");
                     self.increaseIndent();
@@ -303,6 +321,8 @@ pub const WatEncoder = struct {
                     try writer.writeByte(')');
                     self.decreaseIndent();
                 },
+                .@"br" => |idx| try writer.print("br {d}", .{idx}),
+                .@"br_if" => |idx| try writer.print("br_if {d}", .{idx}),
                 .@"return" => try writer.writeAll("return"),
                 .@"call" => |idx| try writer.print("call {d}", .{idx}),
                 .@"drop" => try writer.writeAll("drop"),

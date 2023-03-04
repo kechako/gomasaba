@@ -446,8 +446,14 @@ pub const Instruction = union(Opecode) {
     // ==== Control Instructions ====
     @"unreachable": void, // not implemented
     @"nop": void, // not implemented
-    @"block": void, // not implemented
-    @"loop": void, // not implemented
+    @"block": struct {
+        block_type: BlockType,
+        branch_target: u32,
+    },
+    @"loop": struct {
+        block_type: BlockType,
+        branch_target: u32,
+    },
     @"if": struct {
         block_type: BlockType,
         branch_target: u32,
@@ -455,8 +461,8 @@ pub const Instruction = union(Opecode) {
     },
     @"else": void,
     @"end": void,
-    @"br": void, // not implemented
-    @"br_if": void, // not implemented
+    @"br": u32,
+    @"br_if": u32,
     @"br_table": void, // not implemented
     @"return": void,
     @"call": u32,

@@ -73,37 +73,25 @@ pub const VM = struct {
             //std.debug.print("OP: {s}\n", .{@tagName(instruction)});
 
             switch (instruction) {
+                .@"block" => |b| {
+                    const result_types = try self.enterBlock(&frame, b.block_type);
+
+                    const label = try Label.init(instruction, result_types);
+                    try frame.pushLabel(label);
+                },
+                .@"loop" => |b| {
+                    const result_types = try self.enterBlock(&frame, b.block_type);
+
+                    const label = try Label.init(instruction, result_types);
+                    try frame.pushLabel(label);
+                },
                 .@"if" => |b| {
                     const c = try self.value_stack.pop();
                     if (c != .i32) {
                         return error.InvalidValueStack;
                     }
 
-                    var result_types: []const mod.ValueType = &[_]mod.ValueType{};
-                    switch (b.block_type) {
-                        .empty => {},
-                        .value_type => |v| {
-                            result_types = &[_]mod.ValueType{v};
-                        },
-                        .type_index => |idx| {
-                            const typ = try frame.module.getType(@intCast(u32, idx));
-                            const arity = typ.parameter_types.len;
-                            for (typ.parameter_types) |value_type, i| {
-                                const v = try self.value_stack.peekDepth(arity - i - 1);
-                                const valid = switch (value_type) {
-                                    .i32 => v == .i32,
-                                    .i64 => v == .i64,
-                                    .f32 => v == .f32,
-                                    .f64 => v == .f64,
-                                    else => return error.UnexpectedValueType,
-                                };
-                                if (!valid) {
-                                    return error.InvalidValueStack;
-                                }
-                            }
-                            result_types = typ.result_types;
-                        },
-                    }
+                    const result_types = try self.enterBlock(&frame, b.block_type);
 
                     const label = try Label.init(instruction, result_types);
                     try frame.pushLabel(label);
@@ -126,22 +114,23 @@ pub const VM = struct {
                 },
                 .@"end" => {
                     if (frame.tryPopLabel()) |label| {
-                        const arity = label.result_types.len;
-                        for (label.result_types) |value_type, i| {
-                            const v = try self.value_stack.peekDepth(arity - i - 1);
-                            const valid = switch (value_type) {
-                                .i32 => v == .i32,
-                                .i64 => v == .i64,
-                                .f32 => v == .f32,
-                                .f64 => v == .f64,
-                                else => return error.UnexpectedValueType,
-                            };
-                            if (!valid) {
-                                return error.InvalidValueStack;
-                            }
-                        }
+                        try self.exitBlock(label);
                     } else {
                         frame = try self.finalizeFunction() orelse break :loop;
+                    }
+                },
+                .@"br" => |idx| try self.executeBr(&frame, idx),
+                .@"br_if" => |idx| {
+                    const c = try self.value_stack.pop();
+                    if (c != .i32) {
+                        return error.InvalidValueStack;
+                    }
+
+                    if (c.i32 == 0) {
+                        // false
+                    } else {
+                        // true
+                        try self.executeBr(&frame, idx);
                     }
                 },
                 .@"return" => {
@@ -320,6 +309,63 @@ pub const VM = struct {
         }
 
         return self.frame_stack.tryPeek();
+    }
+
+    fn enterBlock(self: *VM, frame: *Frame, block_type: mod.BlockType) !?[]const mod.ValueType {
+        return switch (block_type) {
+            .empty => null,
+            .value_type => |v| {
+                return &[_]mod.ValueType{v};
+            },
+            .type_index => |idx| {
+                const typ = try frame.module.getType(@intCast(u32, idx));
+                const arity = typ.parameter_types.len;
+                for (typ.parameter_types) |value_type, i| {
+                    const v = try self.value_stack.peekDepth(arity - i - 1);
+                    const valid = switch (value_type) {
+                        .i32 => v == .i32,
+                        .i64 => v == .i64,
+                        .f32 => v == .f32,
+                        .f64 => v == .f64,
+                        else => return error.UnexpectedValueType,
+                    };
+                    if (!valid) {
+                        return error.InvalidValueStack;
+                    }
+                }
+                return typ.result_types;
+            },
+        };
+    }
+
+    fn exitBlock(self: *VM, label: Label) !void {
+        if (label.result_types) |result_types| {
+            const arity = result_types.len;
+            for (result_types) |value_type, i| {
+                const v = try self.value_stack.peekDepth(arity - i - 1);
+                const valid = switch (value_type) {
+                    .i32 => v == .i32,
+                    .i64 => v == .i64,
+                    .f32 => v == .f32,
+                    .f64 => v == .f64,
+                    else => return error.UnexpectedValueType,
+                };
+                if (!valid) {
+                    return error.InvalidValueStack;
+                }
+            }
+        }
+    }
+
+    fn executeBr(self: *VM, frame: *Frame, idx: u32) !void {
+        const label = frame.tryPeekLabelDepth(idx) orelse return error.InvalidLabelIndex;
+        try self.exitBlock(label);
+        var i: usize = 0;
+        while (i < idx + 1) : (i += 1) {
+            _ = try frame.popLabel();
+        }
+
+        try frame.code_reader.setPointer(label.branch_target);
     }
 
     fn popResult(self: *VM, frame: Frame) !Result {
