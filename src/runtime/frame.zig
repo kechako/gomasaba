@@ -67,8 +67,8 @@ pub const Frame = struct {
                         .f64 => .{ .f64 = 0 },
                         else => return error.UnsupportedType,
                     };
+                    i += 1;
                 }
-                i += 1;
             }
         }
         return values;
