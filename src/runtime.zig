@@ -108,7 +108,7 @@ pub const VM = struct {
                     }
                 },
                 .@"else" => {
-                    const label = try frame.peekLabel();
+                    const label = try frame.popLabel();
 
                     try frame.code_reader.setPointer(label.branch_target);
                 },
