@@ -10,18 +10,18 @@ pub const Opecode = enum(u8) {
 
     // ==== Control Instructions ====
     @"unreachable" = 0x00,
-    @"nop" = 0x01,
-    @"block" = 0x02,
-    @"loop" = 0x03,
+    nop = 0x01,
+    block = 0x02,
+    loop = 0x03,
     @"if" = 0x04,
     @"else" = 0x05,
-    @"end" = 0x0b,
-    @"br" = 0x0c,
-    @"br_if" = 0x0d,
-    @"br_table" = 0x0e,
+    end = 0x0b,
+    br = 0x0c,
+    br_if = 0x0d,
+    br_table = 0x0e,
     @"return" = 0x0f,
-    @"call" = 0x10,
-    @"call_indirect" = 0x11,
+    call = 0x10,
+    call_indirect = 0x11,
 
     // ==== Reference Instructions ====
     @"ref.null" = 0xd0,
@@ -29,9 +29,9 @@ pub const Opecode = enum(u8) {
     @"ref.func" = 0xd2,
 
     // ==== Parametric Instructions ====
-    @"drop" = 0x1a,
-    @"select" = 0x1b,
-    @"select_types" = 0x1c,
+    drop = 0x1a,
+    select = 0x1b,
+    select_types = 0x1c,
 
     // ==== Variable Instructions ====
     @"local.get" = 0x20,
@@ -221,24 +221,24 @@ pub const Opecode = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !Opecode {
-        const v = @intToEnum(Opecode, n);
+        const v = @as(Opecode, @enumFromInt(n));
         return switch (v) {
             .Prefix,
 
             // ==== Control Instructions ====
             .@"unreachable",
-            .@"nop",
-            .@"block",
-            .@"loop",
+            .nop,
+            .block,
+            .loop,
             .@"if",
             .@"else",
-            .@"end",
-            .@"br",
-            .@"br_if",
-            .@"br_table",
+            .end,
+            .br,
+            .br_if,
+            .br_table,
             .@"return",
-            .@"call",
-            .@"call_indirect",
+            .call,
+            .call_indirect,
 
             // ==== Reference Instructions ====
             .@"ref.null",
@@ -246,9 +246,9 @@ pub const Opecode = enum(u8) {
             .@"ref.func",
 
             // ==== Parametric Instructions ====
-            .@"drop",
-            .@"select",
-            .@"select_types",
+            .drop,
+            .select,
+            .select_types,
 
             // ==== Variable Instructions ====
             .@"local.get",
@@ -445,12 +445,12 @@ pub const Instruction = union(Opecode) {
 
     // ==== Control Instructions ====
     @"unreachable": void, // not implemented
-    @"nop": void, // not implemented
-    @"block": struct {
+    nop: void, // not implemented
+    block: struct {
         block_type: BlockType,
         branch_target: u32,
     },
-    @"loop": struct {
+    loop: struct {
         block_type: BlockType,
         branch_target: u32,
     },
@@ -460,13 +460,13 @@ pub const Instruction = union(Opecode) {
         else_pointer: u32,
     },
     @"else": void,
-    @"end": void,
-    @"br": u32,
-    @"br_if": u32,
-    @"br_table": void, // not implemented
+    end: void,
+    br: u32,
+    br_if: u32,
+    br_table: void, // not implemented
     @"return": void,
-    @"call": u32,
-    @"call_indirect": void, // not implemented
+    call: u32,
+    call_indirect: void, // not implemented
 
     // ==== Reference Instructions ====
     @"ref.null": void, // not implemented
@@ -474,9 +474,9 @@ pub const Instruction = union(Opecode) {
     @"ref.func": void, // not implemented
 
     // ==== Parametric Instructions ====
-    @"drop": void,
-    @"select": void, // not implemented
-    @"select_types": void, // not implemented
+    drop: void,
+    select: void, // not implemented
+    select_types: void, // not implemented
 
     // ==== Variable Instructions ====
     @"local.get": u32,

@@ -60,7 +60,7 @@ pub fn CodeParser(comptime ReaderType: type) type {
 
             var inst: Instruction = undefined;
             switch (op) {
-                .@"block" => {
+                .block => {
                     const n = try self.readSigned(i33);
 
                     var block_type: BlockType = undefined;
@@ -83,13 +83,13 @@ pub fn CodeParser(comptime ReaderType: type) type {
                     self.scope += 1;
 
                     inst = .{
-                        .@"block" = .{
+                        .block = .{
                             .block_type = block_type,
                             .branch_target = 0,
                         },
                     };
                 },
-                .@"loop" => {
+                .loop => {
                     const n = try self.readSigned(i33);
 
                     var block_type: BlockType = undefined;
@@ -112,9 +112,9 @@ pub fn CodeParser(comptime ReaderType: type) type {
                     self.scope += 1;
 
                     inst = .{
-                        .@"loop" = .{
+                        .loop = .{
                             .block_type = block_type,
-                            .branch_target = @intCast(u32, self.code_pointer),
+                            .branch_target = @as(u32, @intCast(self.code_pointer)),
                         },
                     };
                 },
@@ -154,47 +154,47 @@ pub fn CodeParser(comptime ReaderType: type) type {
                     switch (self.parsed_code.items[pointer]) {
                         .@"if" => |*b| {
                             b.*.branch_target = 0;
-                            b.*.else_pointer = @intCast(u32, self.code_pointer + 1);
+                            b.*.else_pointer = @as(u32, @intCast(self.code_pointer + 1));
                         },
                         else => return error.UnexpectedInstruction,
                     }
 
                     inst = Instruction.@"else";
                 },
-                .@"end" => {
+                .end => {
                     self.scope -= 1;
 
                     if (self.scope != 0) {
                         const pointer = try self.continuationStack.pop();
 
                         switch (self.parsed_code.items[pointer]) {
-                            .@"block" => |*b| {
-                                b.*.branch_target = @intCast(u32, self.code_pointer + 1);
+                            .block => |*b| {
+                                b.*.branch_target = @as(u32, @intCast(self.code_pointer + 1));
                             },
-                            .@"loop" => {},
+                            .loop => {},
                             .@"if" => |*b| {
-                                b.*.branch_target = @intCast(u32, self.code_pointer + 1);
+                                b.*.branch_target = @as(u32, @intCast(self.code_pointer + 1));
                             },
                             else => return error.UnexpectedInstruction,
                         }
                     }
 
-                    inst = Instruction.@"end";
+                    inst = Instruction.end;
                 },
-                .@"br" => {
+                .br => {
                     const idx = try self.readUnsigned(u32);
-                    inst = .{ .@"br" = idx };
+                    inst = .{ .br = idx };
                 },
-                .@"br_if" => {
+                .br_if => {
                     const idx = try self.readUnsigned(u32);
-                    inst = .{ .@"br_if" = idx };
+                    inst = .{ .br_if = idx };
                 },
                 .@"return" => inst = Instruction.@"return",
-                .@"call" => {
+                .call => {
                     const idx = try self.readUnsigned(u32);
-                    inst = .{ .@"call" = idx };
+                    inst = .{ .call = idx };
                 },
-                .@"drop" => inst = Instruction.@"drop",
+                .drop => inst = Instruction.drop,
                 .@"local.get" => {
                     const idx = try self.readUnsigned(u32);
                     inst = .{ .@"local.get" = idx };
@@ -272,7 +272,7 @@ pub fn CodeParser(comptime ReaderType: type) type {
 
         fn readFloat(self: *Self, comptime T: type) !T {
             const i = try self.reader.readInt(BinaryInt(T), .Little);
-            return @bitCast(T, i);
+            return @as(T, @bitCast(i));
         }
 
         fn readByte(self: *Self) !u8 {
@@ -368,7 +368,7 @@ test "instr.Code" {
         // end
         const inst = reader.next();
         if (inst) |i| {
-            try expectEqual(Opecode.@"end", i);
+            try expectEqual(Opecode.end, i);
         } else {
             return error.EndOfCode;
         }

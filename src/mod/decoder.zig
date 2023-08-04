@@ -126,7 +126,7 @@ pub const Decoder = struct {
 
         return .{
             .version = 0,
-            .custom_sections = custom_sections.toOwnedSlice(),
+            .custom_sections = try custom_sections.toOwnedSlice(),
             .type_section = type_section,
             .import_section = import_section,
             .function_section = function_section,
@@ -707,7 +707,7 @@ test "mod.Decoder" {
         {
             // end
             const inst = c[3];
-            try expectEqual(Opecode.@"end", inst);
+            try expectEqual(Opecode.end, inst);
         }
     }
 }

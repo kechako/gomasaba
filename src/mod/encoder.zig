@@ -204,12 +204,10 @@ pub const WatEncoder = struct {
     }
 
     fn writeFunctionSection(self: *WatEncoder, writer: anytype, sec: mod.FunctionSection, func_types: []const mod.FunctionType, codes: []const mod.Code) !void {
-        for (sec.type_indexes) |idx, i| {
-            if (i >= codes.len) {
-                return error.FunctionCodeNotFound;
-            }
-            const code = codes[i];
-
+        if (sec.type_indexes.len != codes.len) {
+            return error.FunctionCodeNotFound;
+        }
+        for (sec.type_indexes, codes) |idx, code| {
             if (idx >= func_types.len) {
                 return error.TypeIndexOutOfRange;
             }
@@ -264,12 +262,12 @@ pub const WatEncoder = struct {
                 break;
             }
 
-            if (instruction != .@"end" and instruction != .@"else") {
+            if (instruction != .end and instruction != .@"else") {
                 try self.writeIndent(writer);
             }
 
             switch (instruction) {
-                .@"block" => |b| {
+                .block => |b| {
                     try writer.writeAll("(block");
                     self.increaseIndent();
 
@@ -278,7 +276,7 @@ pub const WatEncoder = struct {
                     try instrStack.push(instruction);
                     scope += 1;
                 },
-                .@"loop" => |b| {
+                .loop => |b| {
                     try writer.writeAll("(loop");
                     self.increaseIndent();
 
@@ -308,7 +306,7 @@ pub const WatEncoder = struct {
                     try writer.writeAll("(else");
                     self.increaseIndent();
                 },
-                .@"end" => {
+                .end => {
                     scope -= 1;
                     const pushedInstr = instrStack.tryPop();
 
@@ -321,11 +319,11 @@ pub const WatEncoder = struct {
                     try writer.writeByte(')');
                     self.decreaseIndent();
                 },
-                .@"br" => |idx| try writer.print("br {d}", .{idx}),
-                .@"br_if" => |idx| try writer.print("br_if {d}", .{idx}),
+                .br => |idx| try writer.print("br {d}", .{idx}),
+                .br_if => |idx| try writer.print("br_if {d}", .{idx}),
                 .@"return" => try writer.writeAll("return"),
-                .@"call" => |idx| try writer.print("call {d}", .{idx}),
-                .@"drop" => try writer.writeAll("drop"),
+                .call => |idx| try writer.print("call {d}", .{idx}),
+                .drop => try writer.writeAll("drop"),
                 .@"local.get" => |idx| try writer.print("local.get {d}", .{idx}),
                 .@"local.set" => |idx| try writer.print("local.set {d}", .{idx}),
                 .@"local.tee" => |idx| try writer.print("local.tee {d}", .{idx}),
@@ -360,7 +358,7 @@ pub const WatEncoder = struct {
                 if (idx < 0 or idx >= func_types.len) {
                     return error.InvalidTypeIndex;
                 }
-                const func_type = func_types[@intCast(usize, idx)];
+                const func_type = func_types[@as(usize, @intCast(idx))];
                 for (func_type.parameter_types) |value_type| {
                     try self.writeIndent(writer);
                     try writer.print("(param {s})", .{value_type});
@@ -373,7 +371,7 @@ pub const WatEncoder = struct {
         }
     }
     fn writeTableSection(self: *WatEncoder, writer: anytype, sec: mod.TableSection) !void {
-        for (sec.tables) |table, i| {
+        for (sec.tables, 0..) |table, i| {
             try self.writeIndent(writer);
 
             try writer.print("(table (;{d};) ", .{i});
@@ -391,7 +389,7 @@ pub const WatEncoder = struct {
     }
 
     fn writeMemorySection(self: *WatEncoder, writer: anytype, sec: mod.MemorySection) !void {
-        for (sec.memories) |mem, i| {
+        for (sec.memories, 0..) |mem, i| {
             try self.writeIndent(writer);
 
             try writer.print("(memory (;{d};) ", .{i});
@@ -417,7 +415,7 @@ pub const WatEncoder = struct {
     }
 
     fn writeGlobalSection(self: *WatEncoder, writer: anytype, sec: mod.GlobalSection) !void {
-        for (sec.globals) |global, i| {
+        for (sec.globals, 0..) |global, i| {
             try self.writeIndent(writer);
 
             try writer.print("(global (;{d};) ", .{i});
@@ -448,7 +446,7 @@ pub const WatEncoder = struct {
 
         var first = true;
         while (reader.next()) |op| {
-            if (op == .@"end") {
+            if (op == .end) {
                 break;
             }
 

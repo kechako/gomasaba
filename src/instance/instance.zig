@@ -50,8 +50,8 @@ pub const ModuleInstance = struct {
         const type_sec = module.type_section orelse return null;
 
         var types = try self.allocator.alloc(TypeInstance, type_sec.function_types.len);
-        for (type_sec.function_types) |func_type, i| {
-            types[i] = .{
+        for (type_sec.function_types, types) |func_type, *typ| {
+            typ.* = .{
                 .parameter_types = func_type.parameter_types,
                 .result_types = func_type.result_types,
             };
@@ -72,14 +72,13 @@ pub const ModuleInstance = struct {
         }
 
         var functions = try self.allocator.alloc(FunctionInstance, func_len);
-        for (func_sec.type_indexes) |idx, i| {
+        for (func_sec.type_indexes, code_sec.codes, functions) |idx, code, *func| {
             if (idx >= type_sec.function_types.len) {
                 return error.InvalidFunctionAddress;
             }
             const func_type = type_sec.function_types[idx];
-            const code = code_sec.codes[i];
 
-            functions[i] = .{
+            func.* = .{
                 .parameter_types = func_type.parameter_types,
                 .result_types = func_type.result_types,
                 .locals = code.locals,
@@ -102,8 +101,8 @@ pub const ModuleInstance = struct {
         const export_sec = self.module.export_section orelse return null;
 
         var exports = try self.allocator.alloc(ExportInstance, export_sec.exports.len);
-        for (export_sec.exports) |exp, i| {
-            exports[i] = .{
+        for (export_sec.exports, exports) |exp, *instance| {
+            instance.* = .{
                 .name = exp.name,
                 .value = switch (exp.description) {
                     .function => |f| .{

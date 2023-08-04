@@ -73,13 +73,13 @@ pub const VM = struct {
             //std.debug.print("OP: {s}\n", .{@tagName(instruction)});
 
             switch (instruction) {
-                .@"block" => |b| {
+                .block => |b| {
                     const result_types = try self.enterBlock(&frame, b.block_type);
 
                     const label = try Label.init(instruction, result_types);
                     try frame.pushLabel(label);
                 },
-                .@"loop" => |b| {
+                .loop => |b| {
                     const result_types = try self.enterBlock(&frame, b.block_type);
 
                     const label = try Label.init(instruction, result_types);
@@ -112,15 +112,15 @@ pub const VM = struct {
 
                     try frame.code_reader.setPointer(label.branch_target);
                 },
-                .@"end" => {
+                .end => {
                     if (frame.tryPopLabel()) |label| {
                         try self.exitBlock(label);
                     } else {
                         frame = try self.finalizeFunction() orelse break :loop;
                     }
                 },
-                .@"br" => |idx| try self.executeBr(&frame, idx),
-                .@"br_if" => |idx| {
+                .br => |idx| try self.executeBr(&frame, idx),
+                .br_if => |idx| {
                     const c = try self.value_stack.pop();
                     if (c != .i32) {
                         return error.InvalidValueStack;
@@ -136,11 +136,11 @@ pub const VM = struct {
                 .@"return" => {
                     frame = try self.finalizeFunction() orelse break :loop;
                 },
-                .@"call" => |idx| {
+                .call => |idx| {
                     const func = try frame.module.getFunction(idx);
                     frame = try self.initFunction(func);
                 },
-                .@"drop" => _ = try self.value_stack.pop(),
+                .drop => _ = try self.value_stack.pop(),
                 .@"local.get" => |idx| {
                     const value = try frame.getLocal(idx);
                     try self.value_stack.push(value);
@@ -159,7 +159,7 @@ pub const VM = struct {
                     if (c != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c.i32 == 0),
+                        .i32 = @intFromBool(c.i32 == 0),
                     });
                 },
                 .@"i32.eq" => {
@@ -169,7 +169,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 == c2.i32),
+                        .i32 = @intFromBool(c1.i32 == c2.i32),
                     });
                 },
                 .@"i32.ne" => {
@@ -179,7 +179,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 != c2.i32),
+                        .i32 = @intFromBool(c1.i32 != c2.i32),
                     });
                 },
                 .@"i32.lt_s" => {
@@ -189,7 +189,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 < c2.i32),
+                        .i32 = @intFromBool(c1.i32 < c2.i32),
                     });
                 },
                 .@"i32.gt_s" => {
@@ -199,7 +199,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 > c2.i32),
+                        .i32 = @intFromBool(c1.i32 > c2.i32),
                     });
                 },
                 .@"i32.le_s" => {
@@ -209,7 +209,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 <= c2.i32),
+                        .i32 = @intFromBool(c1.i32 <= c2.i32),
                     });
                 },
                 .@"i32.ge_s" => {
@@ -219,7 +219,7 @@ pub const VM = struct {
                     if (c1 != .i32) return error.InvalidStack;
 
                     try self.value_stack.push(.{
-                        .i32 = @boolToInt(c1.i32 >= c2.i32),
+                        .i32 = @intFromBool(c1.i32 >= c2.i32),
                     });
                 },
                 .@"i32.add" => {
@@ -277,7 +277,7 @@ pub const VM = struct {
     fn initFunction(self: *VM, function: *FunctionInstance) !Frame {
         const paramLen = function.parameter_types.len;
         var params: []Value = try self.allocator.alloc(Value, paramLen);
-        for (function.parameter_types) |typ, i| {
+        for (function.parameter_types, 0..) |typ, i| {
             const value = try self.value_stack.pop();
             switch (typ) {
                 .i32 => if (value != .i32) return error.InvalidStack,
@@ -318,9 +318,9 @@ pub const VM = struct {
                 return &[_]mod.ValueType{v};
             },
             .type_index => |idx| {
-                const typ = try frame.module.getType(@intCast(u32, idx));
+                const typ = try frame.module.getType(@as(u32, @intCast(idx)));
                 const arity = typ.parameter_types.len;
-                for (typ.parameter_types) |value_type, i| {
+                for (typ.parameter_types, 0..) |value_type, i| {
                     const v = try self.value_stack.peekDepth(arity - i - 1);
                     const valid = switch (value_type) {
                         .i32 => v == .i32,
@@ -341,7 +341,7 @@ pub const VM = struct {
     fn exitBlock(self: *VM, label: Label) !void {
         if (label.result_types) |result_types| {
             const arity = result_types.len;
-            for (result_types) |value_type, i| {
+            for (result_types, 0..) |value_type, i| {
                 const v = try self.value_stack.peekDepth(arity - i - 1);
                 const valid = switch (value_type) {
                     .i32 => v == .i32,
@@ -374,32 +374,32 @@ pub const VM = struct {
 
         var result = try Result.init(self.allocator, types.len);
 
-        for (types) |typ, i| {
-            const value = try self.value_stack.pop();
+        for (types, result.values) |typ, *value| {
+            const v = try self.value_stack.pop();
             switch (typ) {
                 .i32 => {
-                    if (value != .i32) {
+                    if (v != .i32) {
                         return error.InvalidStack;
                     }
-                    result.values[i] = value;
+                    value.* = v;
                 },
                 .i64 => {
-                    if (value != .i64) {
+                    if (v != .i64) {
                         return error.InvalidStack;
                     }
-                    result.values[i] = value;
+                    value.* = v;
                 },
                 .f32 => {
-                    if (value != .f32) {
+                    if (v != .f32) {
                         return error.InvalidStack;
                     }
-                    result.values[i] = value;
+                    value.* = v;
                 },
                 .f64 => {
-                    if (value != .f64) {
+                    if (v != .f64) {
                         return error.InvalidStack;
                     }
-                    result.values[i] = value;
+                    value.* = v;
                 },
                 else => return error.UnsupportedValueType,
             }

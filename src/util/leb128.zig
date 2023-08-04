@@ -15,7 +15,7 @@ pub fn readUnsigned(comptime T: type, reader: anytype, value: *T) !usize {
     value.* = 0;
     while (i < maxBytes) : (i += 1) {
         const b = try reader.readByte();
-        value.* |= @intCast(T, b & 0x7f) << shift;
+        value.* |= @as(T, @intCast(b & 0x7f)) << shift;
         if (b & 0x80 == 0) {
             return i + 1;
         }
@@ -34,7 +34,7 @@ pub fn writeUnsigned(comptime T: type, writer: anytype, value: T) !usize {
 
     var i: usize = 0;
     while (i < buf.len) : (i += 1) {
-        buf[i] = @truncate(u8, v & 0x7f);
+        buf[i] = @as(u8, @truncate(v & 0x7f));
         v >>= 7;
         if (v == 0) {
             const size = i + 1;
@@ -95,7 +95,7 @@ pub fn readSigned(comptime T: type, reader: anytype, value: *T) !usize {
     value.* = 0;
     while (i < maxBytes) : (i += 1) {
         const b = try reader.readByte();
-        value.* |= @intCast(T, b & 0x7f) << shift;
+        value.* |= @as(T, @intCast(b & 0x7f)) << shift;
         if (b & 0x80 == 0) {
             const size = i + 1;
             if (shift < bitCount - 7 and (b & 0x40) != 0) {
@@ -120,10 +120,10 @@ pub fn writeSigned(comptime T: type, writer: anytype, value: T) !usize {
     const negative = v < 0;
     var i: usize = 0;
     while (i < buf.len) : (i += 1) {
-        const b = @intCast(u8, v & 0x7f);
+        const b = @as(u8, @intCast(v & 0x7f));
         v >>= 7;
         if (negative) {
-            v |= @truncate(T, @as(i128, -1) << (bitCount - 7));
+            v |= @as(T, @truncate(@as(i128, -1) << (bitCount - 7)));
         }
         if (v == 0 and (b & 0x40) == 0 or
             (v == -1 and (b & 0x40) != 0))
@@ -185,7 +185,7 @@ const signedTests = [_]struct {
     .{ .v = -0x08000000, .n = 4, .b = @as([]const u8, &[_]u8{ 0x80, 0x80, 0x80, 0x40 }) },
     .{ .v = -0x08000001, .n = 5, .b = @as([]const u8, &[_]u8{ 0xFF, 0xFF, 0xFF, 0xBF, 0x7F }) },
     .{ .v = -0x20000000, .n = 5, .b = @as([]const u8, &[_]u8{ 0x80, 0x80, 0x80, 0x80, 0x7E }) },
-    .{ .v = @bitCast(i32, @as(u32, 0x80000000)), .n = 5, .b = @as([]const u8, &[_]u8{ 0x80, 0x80, 0x80, 0x80, 0x78 }) },
+    .{ .v = @as(i32, @bitCast(@as(u32, 0x80000000))), .n = 5, .b = @as([]const u8, &[_]u8{ 0x80, 0x80, 0x80, 0x80, 0x78 }) },
 };
 
 test "util.leb128.readSigned()" {

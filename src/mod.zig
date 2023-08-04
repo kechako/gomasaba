@@ -79,7 +79,7 @@ pub const SectionCode = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !SectionCode {
-        const v = @intToEnum(SectionCode, n);
+        const v = @as(SectionCode, @enumFromInt(n));
         return switch (v) {
             .Custom,
             .Type,
@@ -150,7 +150,7 @@ pub const ValueType = enum(i8) {
     _,
 
     pub fn fromInt(n: i8) !ValueType {
-        const v = @intToEnum(ValueType, n);
+        const v = @as(ValueType, @enumFromInt(n));
         return switch (v) {
             .i32, .i64, .f32, .f64, .v128, .funcref, .externref => v,
             _ => error.InvalidValueType,
@@ -285,7 +285,7 @@ pub const ImportDescriptionType = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !ImportDescriptionType {
-        const v = @intToEnum(ImportDescriptionType, n);
+        const v = @as(ImportDescriptionType, @enumFromInt(n));
         return switch (v) {
             .function, .table, .memory, .global => v,
             _ => error.InvalidImportDescriptionType,
@@ -362,7 +362,7 @@ pub const LimitsFlag = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !LimitsFlag {
-        const v = @intToEnum(LimitsFlag, n);
+        const v = @as(LimitsFlag, @enumFromInt(n));
         return switch (v) {
             .min_only, .max_present => v,
             _ => error.InvalidLimitsFlag,
@@ -403,7 +403,7 @@ pub const Mutability = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !Mutability {
-        const v = @intToEnum(Mutability, n);
+        const v = @as(Mutability, @enumFromInt(n));
         return switch (v) {
             .immutable, .mutable => v,
             _ => error.InvalidMutability,
@@ -444,7 +444,7 @@ pub const ExportDescriptionType = enum(u8) {
     _,
 
     pub fn fromInt(n: u8) !ExportDescriptionType {
-        const v = @intToEnum(ExportDescriptionType, n);
+        const v = @as(ExportDescriptionType, @enumFromInt(n));
         return switch (v) {
             .function, .table, .memory, .global => v,
             _ => error.InvalidExportDescriptionType,
@@ -531,11 +531,11 @@ pub const DataMode = packed struct {
     reserved: u30,
 
     pub fn fromInt(n: u32) DataMode {
-        return @bitCast(DataMode, n);
+        return @as(DataMode, @bitCast(n));
     }
 
     pub fn toInt(self: DataMode) u32 {
-        return @bitCast(u32, self);
+        return @as(u32, @bitCast(self));
     }
 };
 

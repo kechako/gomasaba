@@ -8,11 +8,11 @@ pub const Label = struct {
 
     pub fn init(inst: instr.Instruction, result_types: ?[]const mod.ValueType) !Label {
         return switch (inst) {
-            .@"block" => |b| .{
+            .block => |b| .{
                 .branch_target = b.branch_target,
                 .result_types = result_types,
             },
-            .@"loop" => |b| .{
+            .loop => |b| .{
                 .branch_target = b.branch_target,
                 .result_types = result_types,
             },
